@@ -1,4 +1,4 @@
-# Bangalore Borewell Sensor Dashboard
+﻿# Bangalore Borewell Sensor Dashboard
 
 A frontend web dashboard for visualizing Bengaluru borewell sensor locations, BBMP ward boundaries, water-level trends, and discharge data on top of OpenStreetMap.
 
@@ -33,10 +33,10 @@ The dashboard:
 
 ```text
 .
-├── index.html
-├── BBMP_Dashboard.css
-├── bbmpwards.zip
-└── README.md
+â”œâ”€â”€ index.html
+â”œâ”€â”€ BBMP_Dashboard.css
+â”œâ”€â”€ bbmpwards.zip
+â””â”€â”€ README.md
 ```
 
 ---
@@ -81,7 +81,7 @@ This frontend expects a backend API to be running separately.
 Update the backend URL inside `index.html`:
 
 ```javascript
-const API_BASE_URL = 'https://bbmp-borewell-backend.onrender.com';
+const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
 ```
 
 The frontend expects these API routes:
@@ -96,8 +96,8 @@ GET /api/refresh
 Example full API calls:
 
 ```text
-https://bbmp-borewell-backend.onrender.com/api/sensors
-https://bbmp-borewell-backend.onrender.com/api/water-level?uid=<sensor_uid>
+https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev/api/sensors
+https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev/api/water-level?uid=<sensor_uid>
 ```
 
 ---
@@ -132,7 +132,7 @@ Sensitive downloading, parsing, storage, and authentication must be handled by t
 2. Go to:
 
 ```text
-Repository → Settings → Pages
+Repository â†’ Settings â†’ Pages
 ```
 
 3. Set:
@@ -225,9 +225,9 @@ Available chart filters:
 
 ```text
 GitHub Pages frontend
-        ↓
-Render backend API
-        ↓
+        â†“
+Cloudflare Worker API
+        â†“
 Database / processed KH data
 ```
 
@@ -245,4 +245,5 @@ The backend service is responsible for:
 - Data cleaning and parsing
 - Database storage
 - API response generation
-- Scheduled refresh jobs
+- Refresh jobs triggered through GitHub Actions
+
