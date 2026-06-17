@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BBMP Borewell Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="BBMP_Dashboard.css">
+</head>
+<body>
+  <main class="app" id="app">
+    <button class="collapse-toggle" id="toggleLeft" title="Collapse sensor list" aria-label="Collapse sensor list">‹</button>
+    <button class="collapse-toggle" id="toggleRight" title="Collapse details panel" aria-label="Collapse details panel">›</button>
+
+    <aside>
+      <header>
+        <h1>BBMP Borewell Dashboard</h1>
+        <p class="subhead" id="refreshStatus">Opening the dashboard starts the latest KH data download.</p>
+      </header>
+
+      <section class="controls">
+        <label>
+          Search UID or Ward
+          <input id="search" type="search" placeholder="UID, ward number, ward name">
+        </label>
+
+        <div class="button-row">
+          <button id="fitSensors" class="primary">Fit Borewells</button>
+          <button id="refreshData">Refresh Data</button>
+        </div>
+      </section>
+
+      <section class="stats">
+        <div class="stat">
+          <strong id="totalCount">0</strong>
+          <span>Total</span>
+        </div>
+        <div class="stat">
+          <strong id="withDataCount">0</strong>
+          <span>With Data</span>
+        </div>
+        <div class="stat">
+          <strong id="withoutDataCount">0</strong>
+          <span>No Data</span>
+        </div>
+      </section>
+
+      <section id="sensorList" class="list"></section>
+    </aside>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div id="toast" class="toast"></div>
+    </section>
+
+    <section class="details">
+      <header>
+        <h2 id="detailTitle">Select a borewell</h2>
+        <p class="subhead" id="detailSubhead">Click a marker or list item to view ward details and time-series charts.</p>
+      </header>
+
+      <div class="details-body">
+        <section class="detail-grid">
+          <div class="detail"><span>UID</span><strong id="detailUid">-</strong></div>
+          <div class="detail"><span>Ward No</span><strong id="detailWardNo">-</strong></div>
+          <div class="detail"><span>Ward Name</span><strong id="detailWardName">-</strong></div>
+          <div class="detail"><span>Lat / Lon</span><strong id="detailLatLon">-</strong></div>
+          <div class="detail"><span>First Data</span><strong id="detailFirstData">-</strong></div>
+          <div class="detail"><span>Last Data</span><strong id="detailLastData">-</strong></div>
+          <div class="detail"><span>Readings</span><strong id="detailReadings">-</strong></div>
+          <div class="detail"><span>Data Type</span><strong id="detailDataType">-</strong></div>
+        </section>
+
+        <section class="controls">
+          <div class="button-row">
+            <button id="exportSelected" class="primary" type="button">Export selected CSV</button>
+          </div>
+        </section>
+
+        <section>
+          <h2>Time Range</h2>
+          <div class="range-tabs">
+            <button class="active" data-range="week">Last Week</button>
+            <button data-range="month">Last Month</button>
+            <button data-range="three">3 Months</button>
+            <button data-range="all">All Time</button>
+          </div>
+        </section>
+
+        <section class="chart-box">
+          <h2>Water Level Below Surface</h2>
+          <canvas id="waterChart"></canvas>
+          <div id="waterEmpty" class="empty-chart" style="display:none">No water-level data for this borewell and range.</div>
+        </section>
+
+        <section class="chart-box">
+          <h2>Discharge</h2>
+          <canvas id="dischargeChart"></canvas>
+          <div id="dischargeEmpty" class="empty-chart" style="display:none">No discharge data is available for this borewell and range.</div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    const bangaloreCenter = [12.9716, 77.5946];
+    const API_BASE_URL = 'https://bbmp-borewell-backend.onrender.com';
+    const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let shapeLayer = null;
+    let sensorLayer = L.layerGroup().addTo(map);
+    let sensors = [];
+    let wardFeatures = [];
+    let wardLayers = [];
+    let selectedSensor = null;
+    let selectedRange = 'week';
+    let waterPoints = [];
+    let waterChart = null;
+    let dischargeChart = null;
+
+    const els = {
+      refreshStatus: document.getElementById('refreshStatus'),
+      search: document.getElementById('search'),
+      fitSensors: document.getElementById('fitSensors'),
+      refreshData: document.getElementById('refreshData'),
+      sensorList: document.getElementById('sensorList'),
+      totalCount: document.getElementById('totalCount'),
+      withDataCount: document.getElementById('withDataCount'),
+      withoutDataCount: document.getElementById('withoutDataCount'),
+      toast: document.getElementById('toast'),
+      detailTitle: document.getElementById('detailTitle'),
+      detailSubhead: document.getElementById('detailSubhead'),
+      detailUid: document.getElementById('detailUid'),
+      detailWardNo: document.getElementById('detailWardNo'),
+      detailWardName: document.getElementById('detailWardName'),
+      detailLatLon: document.getElementById('detailLatLon'),
+      detailFirstData: document.getElementById('detailFirstData'),
+      detailLastData: document.getElementById('detailLastData'),
+      detailReadings: document.getElementById('detailReadings'),
+      detailDataType: document.getElementById('detailDataType'),
+      waterEmpty: document.getElementById('waterEmpty'),
+      dischargeEmpty: document.getElementById('dischargeEmpty'),
+      app: document.getElementById('app'),
+      toggleLeft: document.getElementById('toggleLeft'),
+      toggleRight: document.getElementById('toggleRight')
+    };
+
+    let legendFilter = '';
+
+    const dataCategoryLabels = {
+      both: 'Water  Level + Discharge',
+      water: 'Water Level only',
+      discharge: 'Discharge only',
+      none: 'No data'
+    };
+
+    const dataCategoryColors = {
+      both: '#007a3d',
+      water: '#1d4ed8',
+      discharge: '#f59e0b',
+      none: '#d12f2f'
+    };
+
+    const colorForSensor = (sensor) => dataCategoryColors[sensor.dataCategory || 'none'];
+    const formatNumber = (value, decimals = 0) => {
+      const number = Number(value);
+      if (!Number.isFinite(number)) return value || '-';
+      return number.toLocaleString('en-IN', { maximumFractionDigits: decimals });
+    };
+    const formatDateTime = (value) => {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+    const wardNumber = (props = {}) => formatNumber(props.WARD_NO ?? props.ward_no ?? props.ward ?? props.WARD, 0);
+    const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
+
+    const showToast = (message) => {
+      els.toast.textContent = message;
+      els.toast.classList.add('show');
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => els.toast.classList.remove('show'), 5200);
+    };
+
+    const pointInRing = (point, ring) => {
+      const [x, y] = point;
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+        const intersects = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+        if (intersects) inside = !inside;
+      }
+      return inside;
+    };
+
+    const pointInPolygon = (point, polygon) => {
+      if (!polygon?.length || !pointInRing(point, polygon[0])) return false;
+      return !polygon.slice(1).some((hole) => pointInRing(point, hole));
+    };
+
+    const pointInFeature = (sensor, feature) => {
+      const point = [sensor.lng, sensor.lat];
+      const geometry = feature.geometry;
+      if (!geometry) return false;
+      if (geometry.type === 'Polygon') return pointInPolygon(point, geometry.coordinates);
+      if (geometry.type === 'MultiPolygon') return geometry.coordinates.some((polygon) => pointInPolygon(point, polygon));
+      return false;
+    };
+
+    const flattenGeoJsonFeatures = (geojson) => {
+      if (!geojson) return [];
+      if (geojson.type === 'FeatureCollection') return geojson.features || [];
+      if (geojson.type === 'Feature') return [geojson];
+      if (Array.isArray(geojson)) return geojson.flatMap(flattenGeoJsonFeatures);
+      return [];
+    };
+
+    const wardPopupHtml = (feature) => {
+      const props = feature.properties || {};
+      const count = props._sensorCount || 0;
+      const withData = props._sensorWithDataCount || 0;
+      const withoutData = props._sensorWithoutDataCount || 0;
+      const withDataPercent = count ? ((withData / count) * 100).toFixed(1) : '0.0';
+      return `
+        <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
+        <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
+        <div><strong>With data:</strong> ${formatNumber(withData)}</div>
+        <div><strong>Without data:</strong> ${formatNumber(withoutData)}</div>
+        <div><strong>Data coverage:</strong> ${withDataPercent}%</div>
+        <div><strong>Population:</strong> ${formatNumber(props.POP_TOTAL)}</div>
+        <div><strong>Area:</strong> ${formatNumber(props.AREA_SQ_KM, 2)} sq km</div>
+      `;
+    };
+
+    const refreshWardPopups = () => {
+      for (const layer of wardLayers) {
+        if (layer.feature) layer.bindPopup(wardPopupHtml(layer.feature));
+      }
+    };
+
+    const assignSensorsToWards = () => {
+      for (const feature of wardFeatures) {
+        feature.properties = feature.properties || {};
+        feature.properties._sensorCount = 0;
+        feature.properties._sensorWithDataCount = 0;
+        feature.properties._sensorWithoutDataCount = 0;
+      }
+      for (const sensor of sensors) {
+        const feature = wardFeatures.find((item) => pointInFeature(sensor, item));
+        const props = feature?.properties || {};
+        sensor.wardNo = feature ? wardNumber(props) : '';
+        sensor.wardName = feature ? wardName(props) : '';
+        if (feature) {
+          props._sensorCount = (props._sensorCount || 0) + 1;
+          if (sensor.hasData) {
+            props._sensorWithDataCount = (props._sensorWithDataCount || 0) + 1;
+          } else {
+            props._sensorWithoutDataCount = (props._sensorWithoutDataCount || 0) + 1;
+          }
+        }
+      }
+      refreshWardPopups();
+    };
+
+    const sensorIcon = (sensor) => L.divIcon({
+      className: '',
+      html: `<div class="marker-pin" style="background:${colorForSensor(sensor)}"></div>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      popupAnchor: [0, -10]
+    });
+
+    const popupHtml = (sensor) => `
+      <strong>${sensor.uid}</strong>
+      <div><strong>UID:</strong> ${sensor.uid}</div>
+      <div><strong>Ward No:</strong> ${sensor.wardNo || 'Not matched'}</div>
+      <div><strong>Ward Name:</strong> ${sensor.wardName || 'Not matched'}</div>
+      <div><strong>Lat/Lon:</strong> ${sensor.lat.toFixed(6)}, ${sensor.lng.toFixed(6)}</div>
+      <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none']}</div>
+      <div><strong>First Data:</strong> ${formatDateTime(sensor.firstDataAt)}</div>
+      <div><strong>Last Data:</strong> ${formatDateTime(sensor.lastDataAt)}</div>
+      <div><strong>Readings:</strong> ${formatNumber(sensor.totalReadings || 0)}</div>
+    `;
+
+    const filteredSensors = () => {
+      const query = els.search.value.trim().toLowerCase();
+      return sensors.filter((sensor) => {
+        const text = [sensor.uid, sensor.wardNo, sensor.wardName].join(' ').toLowerCase();
+        const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
+        return dataMatch && (!query || text.includes(query));
+      });
+    };
+
+    const renderSensors = () => {
+      sensorLayer.clearLayers();
+      const visible = filteredSensors();
+      els.totalCount.textContent = String(sensors.length);
+      els.withDataCount.textContent = String(sensors.filter((sensor) => sensor.hasData).length);
+      els.withoutDataCount.textContent = String(sensors.filter((sensor) => !sensor.hasData).length);
+
+      for (const sensor of visible) {
+        const marker = L.marker([sensor.lat, sensor.lng], { icon: sensorIcon(sensor) })
+          .bindPopup(popupHtml(sensor))
+          .on('click', () => selectSensor(sensor, true));
+        sensor.marker = marker;
+        sensorLayer.addLayer(marker);
+      }
+      renderList(visible);
+    };
+
+    const renderList = (visible) => {
+      els.sensorList.innerHTML = '';
+      if (!els.search.value.trim() && !legendFilter) {
+        const empty = document.createElement('div');
+        empty.className = 'sensor-meta';
+        empty.style.padding = '14px 10px';
+        empty.textContent = 'Use search, click a legend category, or click a map marker to inspect borewells.';
+        els.sensorList.append(empty);
+        return;
+      }
+      if (!visible.length) {
+        const empty = document.createElement('div');
+        empty.className = 'sensor-meta';
+        empty.style.padding = '14px 10px';
+        empty.textContent = sensors.length ? 'No borewells match the current filter.' : 'Loading borewells...';
+        els.sensorList.append(empty);
+        return;
+      }
+      for (const sensor of visible) {
+        const item = document.createElement('button');
+        item.className = `sensor-item${selectedSensor?.uid === sensor.uid ? ' active' : ''}`;
+        item.innerHTML = `
+          <span class="dot" style="background:${colorForSensor(sensor)}"></span>
+          <span>
+            <span class="sensor-name">${sensor.uid}</span>
+            <span class="sensor-meta">Ward ${sensor.wardNo || '-'}${sensor.wardName ? ' / ' + sensor.wardName : ''} / ${dataCategoryLabels[sensor.dataCategory || 'none']}</span>
+          </span>
+        `;
+        item.addEventListener('click', () => selectSensor(sensor, true));
+        els.sensorList.append(item);
+      }
+    };
+
+    const fitSensors = () => {
+      const visible = filteredSensors();
+      if (!visible.length) {
+        showToast('No visible borewells to fit.');
+        return;
+      }
+      const bounds = L.latLngBounds(visible.map((sensor) => [sensor.lat, sensor.lng]));
+      map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
+    };
+
+    const csvEscape = (value) => {
+      const text = String(value ?? '');
+      return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+
+    const exportFilteredSensors = () => {
+      const visible = filteredSensors();
+      const headers = [
+        'ward_name',
+        'ward_number',
+        'uid',
+        'data_category',
+        'first_data_at',
+        'last_data_at',
+        'water_readings',
+        'discharge_readings',
+        'total_readings',
+        'latitude',
+        'longitude'
+      ];
+      const rows = visible.map((sensor) => [
+        sensor.wardName || '',
+        sensor.wardNo || '',
+        sensor.uid,
+        dataCategoryLabels[sensor.dataCategory || 'none'],
+        sensor.firstDataAt || '',
+        sensor.lastDataAt || '',
+        sensor.waterReadings || 0,
+        sensor.dischargeReadings || 0,
+        sensor.totalReadings || 0,
+        sensor.lat,
+        sensor.lng
+      ]);
+      const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      const label = legendFilter ? legendFilter : 'all';
+      link.href = URL.createObjectURL(blob);
+      link.download = `bbmp_borewells_${label}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(link);
+      link.click();
+      URL.revokeObjectURL(link.href);
+      link.remove();
+      showToast(`Exported ${visible.length} borewells.`);
+    };
+
+    const exportSelectedSensor = () => {
+      if (!selectedSensor) {
+        showToast('Select a borewell before exporting.');
+        return;
+      }
+
+      const headers = [
+        'uid',
+        'ward_name',
+        'ward_number',
+        'data_category',
+        'latitude',
+        'longitude',
+        'time',
+        'water_level_ft',
+        'off_level_ft',
+        'on_level_ft',
+        'discharge_l_min'
+      ];
+
+      const rows = waterPoints.length
+        ? waterPoints.map((point) => [
+            selectedSensor.uid,
+            selectedSensor.wardName || '',
+            selectedSensor.wardNo || '',
+            dataCategoryLabels[selectedSensor.dataCategory || 'none'],
+            selectedSensor.lat,
+            selectedSensor.lng,
+            point.time || '',
+            Number.isFinite(point.waterLevel) ? point.waterLevel : '',
+            Number.isFinite(point.offLevel) ? point.offLevel : '',
+            Number.isFinite(point.onLevel) ? point.onLevel : '',
+            Number.isFinite(point.discharge) ? point.discharge : ''
+          ])
+        : [[
+            selectedSensor.uid,
+            selectedSensor.wardName || '',
+            selectedSensor.wardNo || '',
+            dataCategoryLabels[selectedSensor.dataCategory || 'none'],
+            selectedSensor.lat,
+            selectedSensor.lng,
+            '',
+            '',
+            '',
+            '',
+            ''
+          ]];
+
+      const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      const safeUid = String(selectedSensor.uid).replace(/[^a-z0-9_-]+/gi, '_');
+      link.href = URL.createObjectURL(blob);
+      link.download = `bbmp_borewell_${safeUid}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(link);
+      link.click();
+      URL.revokeObjectURL(link.href);
+      link.remove();
+      showToast(`Exported selected borewell ${selectedSensor.uid}.`);
+    };
+
+    const drawShapeFile = async () => {
+      const response = await fetch('bbmpwards.zip');
+      if (!response.ok) throw new Error(`Could not load bbmpwards.zip: HTTP ${response.status}`);
+      const geojson = await shp(await response.arrayBuffer());
+      if (shapeLayer) map.removeLayer(shapeLayer);
+      wardFeatures = flattenGeoJsonFeatures(geojson);
+      wardLayers = [];
+      assignSensorsToWards();
+      shapeLayer = L.geoJSON({ type: 'FeatureCollection', features: wardFeatures }, {
+        style: { color: '#00695c', weight: 2, opacity: 0.95, fillColor: '#26a69a', fillOpacity: 0.12 },
+        onEachFeature: (feature, layer) => {
+          wardLayers.push(layer);
+          layer.bindPopup(wardPopupHtml(feature));
+        }
+      }).addTo(map);
+      map.fitBounds(shapeLayer.getBounds().pad(0.08));
+    };
+
+    const loadSensors = async () => {
+      const response = await fetch('${API_BASE_URL}/api/sensors');
+      if (!response.ok) throw new Error('Could not load sensors from local dashboard server.');
+      const payload = await response.json();
+      sensors = payload.sensors || [];
+      assignSensorsToWards();
+      renderSensors();
+      fitSensors();
+      if (selectedSensor) {
+        const updated = sensors.find((sensor) => sensor.uid === selectedSensor.uid);
+        if (updated) selectSensor(updated, false);
+      }
+      showToast(`Loaded ${sensors.length} borewells; ${payload.sensorsWithWaterData || 0} have water-level data.`);
+    };
+
+    const refreshData = async () => {
+      try {
+        els.refreshStatus.textContent = 'Downloading latest KH reports...';
+        await fetch('${API_BASE_URL}/api/refresh');
+        const started = Date.now();
+        const timer = window.setInterval(async () => {
+          const status = await (await fetch('${API_BASE_URL}/api/status')).json();
+          els.refreshStatus.textContent = status.running ? 'Downloading latest KH reports...' : 'Checking latest KH data...';
+          if (!status.running || Date.now() - started > 260000) {
+            window.clearInterval(timer);
+            if (status.ok === false) {
+              els.refreshStatus.textContent = 'Could not refresh KH data. Using the latest local files.';
+              showToast('Could not refresh KH data. Check the downloader login or network connection.');
+            } else {
+              const finished = status.lastFinished ? new Date(status.lastFinished).toLocaleString('en-IN') : 'now';
+              els.refreshStatus.textContent = `Latest KH data updated ${finished}.`;
+            }
+            await loadSensors();
+          }
+        }, 2500);
+      } catch (error) {
+        els.refreshStatus.textContent = 'Could not start data refresh.';
+        showToast(error.message);
+      }
+    };
+
+    const rangeStart = (points) => {
+      if (selectedRange === 'all' || !points.length) return null;
+      const latest = new Date(points[points.length - 1].time);
+      const days = selectedRange === 'week' ? 7 : selectedRange === 'month' ? 30 : 90;
+      return new Date(latest.getTime() - days * 24 * 60 * 60 * 1000);
+    };
+
+    const filteredPoints = () => {
+      const start = rangeStart(waterPoints);
+      return waterPoints.filter((point) => !start || new Date(point.time) >= start);
+    };
+
+    const buildChart = (canvasId, existing, labels, values, label, color, options = {}) => {
+      if (existing) existing.destroy();
+      const canvas = document.getElementById(canvasId);
+      canvas.style.width = '100%';
+      return new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data: values,
+            borderColor: color,
+            backgroundColor: color + '22',
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            tension: 0.25
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+            y: { reverse: !!options.reverseY, title: { display: true, text: options.yTitle || '' } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const value = context.parsed.y;
+                  if (value === null || value === undefined) return `${context.dataset.label}: N/A`;
+                  const unit = options.unit ? ` ${options.unit}` : '';
+                  return `${context.dataset.label}: ${value.toFixed(1)}${unit}`;
+                }
+              }
+            }
+          }
+        }
+      });
+    };
+
+    const buildMultiChart = (canvasId, existing, labels, datasets, options = {}) => {
+      if (existing) existing.destroy();
+      const canvas = document.getElementById(canvasId);
+      canvas.style.width = '100%';
+      return new Chart(document.getElementById(canvasId), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: datasets.map((dataset) => ({
+            ...dataset,
+            backgroundColor: dataset.borderColor + '22',
+            borderWidth: dataset.borderWidth ?? 2,
+            pointRadius: dataset.pointRadius ?? 2,
+            pointHoverRadius: dataset.pointHoverRadius ?? 4,
+            tension: dataset.tension ?? 0.25,
+            spanGaps: dataset.spanGaps ?? false
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 6
+              }
+            },
+            y: {
+              reverse: !!options.reverseY,
+              title: {
+                display: true,
+                text: options.yTitle || ''
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: true
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const value = context.parsed.y;
+
+                  if (value === null || value === undefined) {
+                    return `${context.dataset.label}: N/A`;
+                  }
+
+                  return `${context.dataset.label}: ${value.toFixed(1)} ft`;
+                }
+              }
+            }
+          }
+        }
+      });
+    };
+
+    const renderCharts = () => {
+      const points = filteredPoints();
+      els.app.classList.toggle('chart-wide', points.length > 120);
+      const labels = points.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
+      const offLevels = points.map((point) => point.offLevel).filter((value) => Number.isFinite(value));
+      const onLevels = points.map((point) => point.onLevel).filter((value) => Number.isFinite(value));
+      const water = points.map((point) => point.waterLevel).filter((value) => Number.isFinite(value));
+      const discharge = points.map((point) => point.discharge).filter((value) => Number.isFinite(value));
+
+      const waterCanvas = document.getElementById('waterChart');
+      const dischargeCanvas = document.getElementById('dischargeChart');
+      els.waterEmpty.style.display = water.length ? 'none' : 'grid';
+      waterCanvas.style.display = water.length ? 'block' : 'none';
+      els.dischargeEmpty.style.display = discharge.length ? 'none' : 'grid';
+      dischargeCanvas.style.display = discharge.length ? 'block' : 'none';
+
+      if (offLevels.length || onLevels.length) {
+        waterChart = buildMultiChart('waterChart', waterChart, labels, [
+          {
+            label: 'Level path',
+            data: points.map((point) => Number.isFinite(point.waterLevel) ? point.waterLevel : null),
+            borderColor: '#4b5563',
+            borderDash: [6, 5],
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            spanGaps: true,
+            tension: 0
+          },
+          {
+            label: 'Off level',
+            data: points.map((point) => Number.isFinite(point.offLevel) ? point.offLevel : null),
+            borderColor: '#244e9a'
+          },
+          {
+            label: 'On level',
+            data: points.map((point) => Number.isFinite(point.onLevel) ? point.onLevel : null),
+            borderColor: '#008a3d'
+          }
+        ], {
+          reverseY: true,
+          yTitle: 'Feet below surface',
+          unit: 'ft'
+        });
+      } else if (water.length) {
+        waterChart = buildChart('waterChart', waterChart, labels, points.map((point) => point.waterLevel), 'Water Level Below Surface', '#244e9a', {
+          reverseY: true,
+          yTitle: 'Feet below surface',
+          unit: 'ft'
+        });
+      } else if (waterChart) {
+        waterChart.destroy();
+        waterChart = null;
+      }
+
+      if (discharge.length) {
+        dischargeChart = buildChart('dischargeChart', dischargeChart, labels, points.map((point) => point.discharge), 'Discharge', '#c77700', {
+          yTitle: 'Discharge (L/min)',
+          unit: 'L/min'
+        });
+      } else if (dischargeChart) {
+        dischargeChart.destroy();
+        dischargeChart = null;
+      }
+    };
+
+    const selectSensor = async (sensor, moveMap) => {
+      selectedSensor = sensor;
+
+      els.app.classList.remove('right-collapsed');
+      els.toggleRight.textContent = '›';
+      els.toggleRight.title = 'Collapse details panel';
+      els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
+
+      els.detailTitle.textContent = sensor.uid;
+      els.detailSubhead.textContent = sensor.hasData
+        ? 'Water-level history loaded from the latest KH download.'
+        : 'This borewell has no water-level rows in the latest KH download.';
+      els.detailUid.textContent = sensor.uid;
+      els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
+      els.detailWardName.textContent = sensor.wardName || 'Not matched';
+      els.detailLatLon.textContent = `${sensor.lat.toFixed(6)}, ${sensor.lng.toFixed(6)}`;
+      els.detailFirstData.textContent = formatDateTime(sensor.firstDataAt);
+      els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
+      els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
+      els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'];
+
+      if (moveMap) {
+        map.setView([sensor.lat, sensor.lng], Math.max(map.getZoom(), 15), { animate: true });
+        sensor.marker?.openPopup();
+      }
+
+      setTimeout(() => {
+        map.invalidateSize();
+        waterChart?.resize();
+        dischargeChart?.resize();
+      }, 250);
+
+      renderList(filteredSensors());
+
+      try {
+        const response = await fetch(`/api/water-level?uid=${encodeURIComponent(sensor.uid)}`);
+        const payload = await response.json();
+        waterPoints = payload.points || [];
+      } catch (error) {
+        waterPoints = [];
+        showToast(`Could not load water-level data for ${sensor.uid}`);
+      }
+      renderCharts();
+    };
+
+    const legend = L.control({ position: 'topright' });
+    legend.onAdd = () => {
+      const div = L.DomUtil.create('div', 'legend');
+      L.DomEvent.disableClickPropagation(div);
+      div.innerHTML = `
+        <button class="legend-row" data-filter="both" type="button"><span class="dot" style="background:#007a3d"></span>Water + discharge</button>
+        <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>Water only</button>
+        <button class="legend-row" data-filter="discharge" type="button"><span class="dot" style="background:#f59e0b"></span>Discharge only</button>
+        <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
+    const updateLegendFilterUi = () => {
+      document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.filter === legendFilter);
+      });
+    };
+
+    document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        legendFilter = legendFilter === button.dataset.filter ? '' : button.dataset.filter;
+        updateLegendFilterUi();
+        renderSensors();
+        fitSensors();
+      });
+    });
+
+    document.getElementById('exportSelected').addEventListener('click', () => {
+      exportSelectedSensor();
+    });
+
+    document.querySelectorAll('.range-tabs button').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.range-tabs button').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        selectedRange = button.dataset.range;
+        renderCharts();
+      });
+    });
+
+    els.search.addEventListener('input', renderSensors);
+    els.fitSensors.addEventListener('click', fitSensors);
+    els.refreshData.addEventListener('click', refreshData);
+    els.toggleLeft.addEventListener('click', () => {
+      els.app.classList.toggle('left-collapsed');
+      const collapsed = els.app.classList.contains('left-collapsed');
+      els.toggleLeft.textContent = collapsed ? '›' : '‹';
+      els.toggleLeft.title = collapsed ? 'Expand sensor list' : 'Collapse sensor list';
+      els.toggleLeft.setAttribute('aria-label', els.toggleLeft.title);
+      setTimeout(() => map.invalidateSize(), 220);
+    });
+    els.toggleRight.addEventListener('click', () => {
+      els.app.classList.toggle('right-collapsed');
+      const collapsed = els.app.classList.contains('right-collapsed');
+      els.toggleRight.textContent = collapsed ? '‹' : '›';
+      els.toggleRight.title = collapsed ? 'Expand details panel' : 'Collapse details panel';
+      els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
+      setTimeout(() => map.invalidateSize(), 220);
+    });
+
+    (async () => {
+      try {
+        await Promise.all([drawShapeFile(), loadSensors()]);
+        refreshData();
+      } catch (error) {
+        showToast(error.message);
+      }
+    })();
+  </script>
+</body>
+</html>
