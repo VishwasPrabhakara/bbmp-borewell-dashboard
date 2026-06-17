@@ -493,7 +493,7 @@
     };
 
     const loadSensors = async () => {
-      const response = await fetch('${API_BASE_URL}/api/sensors');
+      const response = await fetch(`${API_BASE_URL}/api/sensors`);
       if (!response.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await response.json();
       sensors = payload.sensors || [];
@@ -510,10 +510,10 @@
     const refreshData = async () => {
       try {
         els.refreshStatus.textContent = 'Downloading latest KH reports...';
-        await fetch('${API_BASE_URL}/api/refresh');
+        await fetch(`${API_BASE_URL}/api/refresh`);
         const started = Date.now();
         const timer = window.setInterval(async () => {
-          const status = await (await fetch('${API_BASE_URL}/api/status')).json();
+          const status = await (await fetch(`${API_BASE_URL}/api/status`)).json();
           els.refreshStatus.textContent = status.running ? 'Downloading latest KH reports...' : 'Checking latest KH data...';
           if (!status.running || Date.now() - started > 260000) {
             window.clearInterval(timer);
@@ -748,7 +748,7 @@
       renderList(filteredSensors());
 
       try {
-        const response = await fetch(`/api/water-level?uid=${encodeURIComponent(sensor.uid)}`);
+        const response = await fetch(`${API_BASE_URL}/api/water-level?uid=${encodeURIComponent(sensor.uid)}`);
         const payload = await response.json();
         waterPoints = payload.points || [];
       } catch (error) {
