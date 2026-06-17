@@ -1,249 +1,99 @@
-﻿# Bangalore Borewell Sensor Dashboard
+# BBMP Borewell Dashboard
 
-A frontend web dashboard for visualizing Bengaluru borewell sensor locations, BBMP ward boundaries, water-level trends, and discharge data on top of OpenStreetMap.
+Static GitHub Pages frontend for visualizing Bengaluru borewell sensors on an OpenStreetMap basemap with BBMP ward boundaries, water-level trends, discharge trends, and data-availability filters.
 
-This repository contains only the **frontend** files for the dashboard. The downloader, database, and API are handled separately by the backend service.
-
----
-
-## Live Dashboard
-
-After GitHub Pages is enabled, the dashboard will be available at:
+## Live Site
 
 ```text
 https://VishwasPrabhakara.github.io/bbmp-borewell-dashboard/
 ```
 
----
+## Repository Role
 
-## What This Frontend Does
+This repo contains only public frontend assets. Downloading KH reports, parsing data, storing records, and serving API responses are handled by the backend job and Cloudflare Worker API.
 
-The dashboard:
-
-- Loads BBMP ward boundaries from the bundled `bbmpwards.zip` file.
-- Displays borewell sensors on an OpenStreetMap basemap.
-- Fetches sensor and water-level data from the deployed backend API.
-- Shows ward details, borewell details, water-level charts, and discharge charts.
-- Allows filtering by data availability.
-- Allows CSV export for the selected borewell or filtered data, depending on the current UI setup.
-
----
-
-## Project Structure
-
-```text
-.
-â”œâ”€â”€ index.html
-â”œâ”€â”€ BBMP_Dashboard.css
-â”œâ”€â”€ bbmpwards.zip
-â””â”€â”€ README.md
-```
-
----
-
-## Included Files
-
-### `index.html`
-
-Main dashboard page containing:
-
-- Map initialization
-- Sensor marker rendering
-- Ward shapefile loading
-- API calls to the backend
-- Chart rendering
-- Sidebar interactions
-- CSV export logic
-
-### `BBMP_Dashboard.css`
-
-Stylesheet for the dashboard layout, map, sidebars, cards, buttons, legends, and charts.
-
-### `bbmpwards.zip`
-
-Bundled BBMP ward shapefile used to display ward boundaries on the map.
-
-The shapefile ZIP should contain:
-
-```text
-.shp
-.shx
-.dbf
-.prj
-```
-
----
-
-## Backend API
-
-This frontend expects a backend API to be running separately.
-
-Update the backend URL inside `index.html`:
-
-```javascript
-const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
-```
-
-The frontend expects these API routes:
-
-```text
-GET /api/sensors
-GET /api/water-level?uid=<sensor_uid>
-GET /api/status
-GET /api/refresh
-```
-
-Example full API calls:
-
-```text
-https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev/api/sensors
-https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev/api/water-level?uid=<sensor_uid>
-```
-
----
-
-## Important Security Note
-
-Do **not** store sensitive data in this frontend repository.
-
-Do not commit:
-
-```text
-KH credentials
-database URLs
-API secrets
-raw KH downloaded data
-data_sent_from_kh/
-.env files
-backend Python scripts
-private CSV/XLSX files
-```
-
-This frontend repository should contain only public static files required to display the dashboard.
-
-Sensitive downloading, parsing, storage, and authentication must be handled by the backend.
-
----
-
-## Deployment on GitHub Pages
-
-1. Push this repository to GitHub.
-
-2. Go to:
-
-```text
-Repository â†’ Settings â†’ Pages
-```
-
-3. Set:
-
-```text
-Source: Deploy from a branch
-Branch: main
-Folder: / root
-```
-
-4. Save.
-
-5. GitHub Pages will publish the dashboard at:
-
-```text
-https://VishwasPrabhakara.github.io/bbmp-borewell-dashboard/
-```
-
----
-
-## Required Frontend Files
-
-Before deploying, make sure the repo contains:
+## Files
 
 ```text
 index.html
 BBMP_Dashboard.css
 bbmpwards.zip
+favicon.png
 README.md
 ```
 
-The `bbmpwards.zip` file must be in the same directory as `index.html` because the dashboard loads it using:
+## Data Sources
+
+- `bbmpwards.zip`: bundled BBMP ward shapefile loaded by the browser.
+- Cloudflare Worker API: returns sensor metadata, refresh status, and time-series water/discharge readings.
+- `favicon.png`: IISc logo/seal from the official IISc logo page.
+
+## API Configuration
+
+The API base URL is set inside `index.html`:
 
 ```javascript
-fetch('bbmpwards.zip')
+const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
 ```
 
----
+Expected routes:
+
+```text
+GET /api/status
+GET /api/refresh
+GET /api/sensors
+GET /api/water-level?uid=<sensor_uid>
+```
 
 ## Features
 
-### Interactive Map
+- OpenStreetMap basemap with BBMP ward boundaries.
+- Borewell sensor markers colored by data availability.
+- Legend-based filtering for sensors with both water and discharge data, one data type, or no data.
+- Clickable wards with ward summary and sensor counts.
+- Clickable borewells with UID, ward, coordinates, first/last data date, and reading counts.
+- Water-level chart with every available point and on/off level traces.
+- Discharge chart with the same time filters as the water-level chart.
+- CSV export for the currently filtered sensor list.
+- Collapsible map sidebars.
 
-- OpenStreetMap basemap
-- BBMP ward boundary overlay
-- Borewell sensor markers
-- Clickable ward polygons
-- Clickable sensor markers
+## Deployment
 
-### Borewell Details
-
-Clicking a borewell displays:
-
-- UID
-- Ward number
-- Ward name
-- Latitude and longitude
-- First available data date
-- Last available data date
-- Reading count
-- Data type
-
-### Charts
-
-The right-side panel displays:
-
-- Water-level chart
-- On-level and off-level lines, when available
-- Discharge chart, when discharge data is available
-- Hover tooltips with units such as `ft` and `L/min`
-
-### Time Filters
-
-Available chart filters:
-
-- Last Week
-- Last Month
-- 3 Months
-- All Time
-
-### Layout
-
-- Collapsible left sensor list
-- Collapsible right details/chart panel
-- Responsive map layout
-
----
-
-## Data Flow
+Enable GitHub Pages:
 
 ```text
-GitHub Pages frontend
-        â†“
-Cloudflare Worker API
-        â†“
-Database / processed KH data
+Repository -> Settings -> Pages
+Source: Deploy from a branch
+Branch: main
+Folder: / root
 ```
 
-The frontend does not directly download KH data and does not connect directly to the database.
+## Security Notes
 
----
+Do not commit secrets or private KH data to this repo.
 
-## Notes
+Keep these out of the frontend repository:
 
-This repository is only for the static dashboard interface.
+```text
+.env
+KH credentials
+database URLs
+API tokens
+raw KH downloads
+data_sent_from_kh/
+private CSV/XLSX files
+```
 
-The backend service is responsible for:
+## Suggested GitHub Details
 
-- KH data download
-- Data cleaning and parsing
-- Database storage
-- API response generation
-- Refresh jobs triggered through GitHub Actions
+Description:
 
+```text
+Static BBMP borewell dashboard showing Bengaluru ward boundaries, borewell sensors, and water/discharge trends.
+```
+
+Topics:
+
+```text
+bbmp, borewell, bengaluru, openstreetmap, gis, leaflet, github-pages, water-level, dashboard
+```
