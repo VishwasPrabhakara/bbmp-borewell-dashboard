@@ -84,16 +84,8 @@ data_sent_from_kh/
 private CSV/XLSX files
 ```
 
-## Suggested GitHub Details
+## LICENSE
 
-Description:
-
-```text
-Static BBMP borewell dashboard showing Bengaluru ward boundaries, borewell sensors, and water/discharge trends.
-```
-
-Topics:
-
-```text
-bbmp, borewell, bengaluru, openstreetmap, gis, leaflet, github-pages, water-level, dashboard
+[MIT]()
+pages, water-level, dashboard
 ```
