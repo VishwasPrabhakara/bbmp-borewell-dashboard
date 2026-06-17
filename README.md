@@ -86,6 +86,5 @@ private CSV/XLSX files
 
 ## LICENSE
 
-[MIT]()
-pages, water-level, dashboard
-```
+[MIT](https://github.com/VishwasPrabhakara/bbmp-borewell-dashboard/blob/main/LICENSE)
+
