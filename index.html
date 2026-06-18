@@ -200,6 +200,7 @@
     };
     const wardNumber = (props = {}) => formatNumber(props.WARD_NO ?? props.ward_no ?? props.ward ?? props.WARD, 0);
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
+    const hasValidLocation = (sensor) => Number.isFinite(Number(sensor.lat)) && Number.isFinite(Number(sensor.lng));
 
     const showToast = (message) => {
       els.toast.textContent = message;
@@ -225,7 +226,8 @@
     };
 
     const pointInFeature = (sensor, feature) => {
-      const point = [sensor.lng, sensor.lat];
+      if (!hasValidLocation(sensor)) return false;
+      const point = [Number(sensor.lng), Number(sensor.lat)];
       const geometry = feature.geometry;
       if (!geometry) return false;
       if (geometry.type === 'Polygon') return pointInPolygon(point, geometry.coordinates);
@@ -272,6 +274,11 @@
         feature.properties._sensorWithoutDataCount = 0;
       }
       for (const sensor of sensors) {
+        if (!hasValidLocation(sensor)) {
+          sensor.wardNo = '';
+          sensor.wardName = '';
+          continue;
+        }
         const feature = wardFeatures.find((item) => pointInFeature(sensor, item));
         const props = feature?.properties || {};
         sensor.wardNo = feature ? wardNumber(props) : '';
@@ -301,7 +308,7 @@
       <div><strong>UID:</strong> ${sensor.uid}</div>
       <div><strong>Ward No:</strong> ${sensor.wardNo || 'Not matched'}</div>
       <div><strong>Ward Name:</strong> ${sensor.wardName || 'Not matched'}</div>
-      <div><strong>Lat/Lon:</strong> ${sensor.lat.toFixed(6)}, ${sensor.lng.toFixed(6)}</div>
+      <div><strong>Lat/Lon:</strong> ${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}</div>
       <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none']}</div>
       <div><strong>First Data:</strong> ${formatDateTime(sensor.firstDataAt)}</div>
       <div><strong>Last Data:</strong> ${formatDateTime(sensor.lastDataAt)}</div>
@@ -324,8 +331,8 @@
       els.withDataCount.textContent = String(sensors.filter((sensor) => sensor.hasData).length);
       els.withoutDataCount.textContent = String(sensors.filter((sensor) => !sensor.hasData).length);
 
-      for (const sensor of visible) {
-        const marker = L.marker([sensor.lat, sensor.lng], { icon: sensorIcon(sensor) })
+      for (const sensor of visible.filter(hasValidLocation)) {
+        const marker = L.marker([Number(sensor.lat), Number(sensor.lng)], { icon: sensorIcon(sensor) })
           .bindPopup(popupHtml(sensor))
           .on('click', () => selectSensor(sensor, true));
         sensor.marker = marker;
@@ -368,12 +375,12 @@
     };
 
     const fitSensors = () => {
-      const visible = filteredSensors();
+      const visible = filteredSensors().filter(hasValidLocation);
       if (!visible.length) {
         showToast('No visible borewells to fit.');
         return;
       }
-      const bounds = L.latLngBounds(visible.map((sensor) => [sensor.lat, sensor.lng]));
+      const bounds = L.latLngBounds(visible.map((sensor) => [Number(sensor.lat), Number(sensor.lng)]));
       map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
     };
 
@@ -762,14 +769,16 @@
       els.detailUid.textContent = sensor.uid;
       els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
       els.detailWardName.textContent = sensor.wardName || 'Not matched';
-      els.detailLatLon.textContent = `${sensor.lat.toFixed(6)}, ${sensor.lng.toFixed(6)}`;
+      els.detailLatLon.textContent = hasValidLocation(sensor)
+        ? `${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}`
+        : 'Location missing';
       els.detailFirstData.textContent = formatDateTime(sensor.firstDataAt);
       els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
       els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
       els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'];
 
-      if (moveMap) {
-        map.setView([sensor.lat, sensor.lng], Math.max(map.getZoom(), 15), { animate: true });
+      if (moveMap && hasValidLocation(sensor)) {
+        map.setView([Number(sensor.lat), Number(sensor.lng)], Math.max(map.getZoom(), 15), { animate: true });
         sensor.marker?.openPopup();
       }
 
