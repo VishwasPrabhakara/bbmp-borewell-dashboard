@@ -7,8 +7,6 @@
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
   <link rel="stylesheet" href="BBMP_Dashboard.css">
 </head>
 <body>
@@ -113,7 +111,6 @@
   </main>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
@@ -128,17 +125,7 @@
     }).addTo(map);
 
     let shapeLayer = null;
-    let sensorLayer = L.markerClusterGroup({
-      disableClusteringAtZoom: 17,
-      maxClusterRadius: 22,
-      showCoverageOnHover: false,
-      spiderfyOnMaxZoom: true,
-      iconCreateFunction: (cluster) => L.divIcon({
-        html: `<div class="sensor-cluster-count">${cluster.getChildCount()}</div>`,
-        className: 'sensor-cluster',
-        iconSize: L.point(42, 42)
-      })
-    }).addTo(map);
+    let sensorLayer = L.layerGroup().addTo(map);
     let sensors = [];
     let wardFeatures = [];
     let wardLayers = [];
@@ -798,11 +785,7 @@
 
       if (moveMap && hasValidLocation(sensor)) {
         map.setView([Number(sensor.lat), Number(sensor.lng)], Math.max(map.getZoom(), 15), { animate: true });
-        if (sensor.marker && sensorLayer.zoomToShowLayer) {
-          sensorLayer.zoomToShowLayer(sensor.marker, () => sensor.marker.openPopup());
-        } else {
-          sensor.marker?.openPopup();
-        }
+        sensor.marker?.openPopup();
       }
 
       setTimeout(() => {
