@@ -90,13 +90,19 @@
         </section>
 
         <section class="chart-box">
-          <h2>Water Level Below Surface</h2>
+          <div class="chart-head">
+            <h2>Water Level Below Surface</h2>
+            <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
+          </div>
           <canvas id="waterChart"></canvas>
           <div id="waterEmpty" class="empty-chart" style="display:none">No water-level data for this borewell and range.</div>
         </section>
 
         <section class="chart-box">
-          <h2>Discharge</h2>
+          <div class="chart-head">
+            <h2>Discharge</h2>
+            <button id="downloadDischargeChart" class="chart-download" type="button">Download PNG</button>
+          </div>
           <canvas id="dischargeChart"></canvas>
           <div id="dischargeEmpty" class="empty-chart" style="display:none">No discharge data is available for this borewell and range.</div>
         </section>
@@ -151,6 +157,8 @@
       detailDataType: document.getElementById('detailDataType'),
       waterEmpty: document.getElementById('waterEmpty'),
       dischargeEmpty: document.getElementById('dischargeEmpty'),
+      downloadWaterChart: document.getElementById('downloadWaterChart'),
+      downloadDischargeChart: document.getElementById('downloadDischargeChart'),
       app: document.getElementById('app'),
       toggleLeft: document.getElementById('toggleLeft'),
       toggleRight: document.getElementById('toggleRight')
@@ -476,6 +484,30 @@
       showToast(`Exported selected borewell ${selectedSensor.uid}.`);
     };
 
+    const downloadChartImage = (chart, label) => {
+      if (!chart || !selectedSensor) {
+        showToast('No chart is available to download.');
+        return;
+      }
+      const source = chart.canvas;
+      const canvas = document.createElement('canvas');
+      canvas.width = source.width;
+      canvas.height = source.height;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(source, 0, 0);
+
+      const safeUid = String(selectedSensor.uid).replace(/[^a-z0-9_-]+/gi, '_');
+      const safeRange = String(selectedRange).replace(/[^a-z0-9_-]+/gi, '_');
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `bbmp_${label}_${safeUid}_${safeRange}_${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+    };
+
     const drawShapeFile = async () => {
       const response = await fetch('bbmpwards.zip');
       if (!response.ok) throw new Error(`Could not load bbmpwards.zip: HTTP ${response.status}`);
@@ -792,6 +824,8 @@
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
     });
+    els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
+    els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
 
     document.querySelectorAll('.range-tabs button').forEach((button) => {
       button.addEventListener('click', () => {

@@ -388,6 +388,25 @@
       min-height: 230px;
     }
 
+    .chart-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .chart-head h2 {
+      margin: 0;
+    }
+
+    .chart-download {
+      min-height: 30px;
+      padding: 0 10px;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
     .chart-box canvas {
       width: 100% !important;
       height: 210px !important;
