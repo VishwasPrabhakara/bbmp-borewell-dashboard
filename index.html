@@ -47,6 +47,14 @@
         </div>
       </section>
 
+      <section class="filter-summary">
+        <div class="stat">
+          <strong id="filteredCount">0</strong>
+          <span>Filtered Borewells</span>
+        </div>
+        <button id="exportFiltered" class="primary" type="button">Export filtered CSV</button>
+      </section>
+
       <section id="sensorList" class="list"></section>
     </aside>
 
@@ -144,6 +152,8 @@
       totalCount: document.getElementById('totalCount'),
       withDataCount: document.getElementById('withDataCount'),
       withoutDataCount: document.getElementById('withoutDataCount'),
+      filteredCount: document.getElementById('filteredCount'),
+      exportFiltered: document.getElementById('exportFiltered'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -336,6 +346,8 @@
       els.totalCount.textContent = String(sensors.length);
       els.withDataCount.textContent = String(sensors.filter((sensor) => sensor.hasData).length);
       els.withoutDataCount.textContent = String(sensors.filter((sensor) => !sensor.hasData).length);
+      els.filteredCount.textContent = String(visible.length);
+      els.exportFiltered.disabled = !visible.length;
 
       for (const sensor of visible.filter(hasValidLocation)) {
         const marker = L.marker([Number(sensor.lat), Number(sensor.lng)], { icon: sensorIcon(sensor) })
@@ -397,6 +409,10 @@
 
     const exportFilteredSensors = () => {
       const visible = filteredSensors();
+      if (!visible.length) {
+        showToast('No filtered borewells to export.');
+        return;
+      }
       const headers = [
         'ward_name',
         'ward_number',
@@ -426,7 +442,8 @@
       const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(',')).join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const link = document.createElement('a');
-      const label = legendFilter ? legendFilter : 'all';
+      const query = els.search.value.trim() ? 'search' : '';
+      const label = [legendFilter || 'all', query].filter(Boolean).join('_');
       link.href = URL.createObjectURL(blob);
       link.download = `bbmp_borewells_${label}_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.append(link);
@@ -839,6 +856,7 @@
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
     });
+    els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
 

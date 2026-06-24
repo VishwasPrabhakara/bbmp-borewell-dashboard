@@ -189,6 +189,19 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .filter-summary {
+      padding: 12px 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: stretch;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .filter-summary button {
+      min-width: 150px;
+    }
+
     .stat {
       border: 1px solid var(--line);
       border-radius: 6px;
