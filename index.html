@@ -67,6 +67,14 @@
         </div>
       </section>
 
+      <section class="controls">
+        <h2>Ward Layer</h2>
+        <div class="button-row">
+          <button class="active" data-ward-mode="qc" type="button">QC Confidence</button>
+          <button data-ward-mode="criticality" type="button">Criticality</button>
+        </div>
+      </section>
+
       <section class="filter-summary">
         <div class="stat">
           <strong id="filteredCount">0</strong>
@@ -150,6 +158,15 @@
   <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
+    let wardLayerMode = 'qc';
+    let wardCriticalityByNo = new Map();
+    const criticalityColors = {
+      Critical: '#b91c1c',
+      'High Risk': '#f97316',
+      Watchlist: '#facc15',
+      Stable: '#16a34a',
+      'Insufficient Data': '#6b7280'
+    };
     const bangaloreCenter = [12.9716, 77.5946];
     const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
@@ -164,6 +181,7 @@
     let sensorLayer = L.layerGroup().addTo(map);
     let sensors = [];
     let sensorQcByUid = new Map();
+    let wardQcByNo = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -241,6 +259,12 @@
       NO_DATA: 'no-data'
     };
 
+    const wardConfidenceColors = {
+      High: '#0f8f4d',
+      Medium: '#f2a900',
+      Low: '#d64545'
+    };
+
     const colorForSensor = (sensor) => dataCategoryColors[sensor.dataCategory || 'none'];
     const qcForSensor = (sensor) => sensor.qc || sensorQcByUid.get(String(sensor.uid));
     const qcStatusForSensor = (sensor) => qcForSensor(sensor)?.qcStatus || '';
@@ -269,6 +293,33 @@
     };
     const wardNumber = (props = {}) => formatNumber(props.WARD_NO ?? props.ward_no ?? props.ward ?? props.WARD, 0);
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
+    const wardQcForProps = (props = {}) => wardQcByNo.get(String(wardNumber(props)));
+    const wardStyle = (feature) => {
+  const wardNo = String(wardNumber(feature.properties || {}));
+
+  if (wardLayerMode === 'criticality') {
+        const item = wardCriticalityByNo.get(wardNo);
+        const status = item?.criticalityStatus;
+        const color = criticalityColors[status] || '#00695c';
+        return {
+          color,
+          weight: item ? 3 : 2,
+          opacity: 0.95,
+          fillColor: color,
+          fillOpacity: item ? 0.30 : 0.12
+        };
+      }
+
+      const confidence = wardQcForProps(feature.properties || {})?.confidence;
+      const color = wardConfidenceColors[confidence] || '#00695c';
+      return {
+        color,
+        weight: confidence ? 3 : 2,
+        opacity: 0.95,
+        fillColor: color,
+        fillOpacity: confidence ? 0.24 : 0.12
+      };
+    };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
     const hasValidLocation = (sensor) => {
       if (!hasCoordinateValue(sensor.lat) || !hasCoordinateValue(sensor.lng)) return false;
@@ -330,14 +381,37 @@
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>Without data:</strong> ${formatNumber(withoutData)}</div>
         <div><strong>Data coverage:</strong> ${withDataPercent}%</div>
+        ${wardQcForProps(props) ? `
+          <div><strong>QC confidence:</strong> ${wardQcForProps(props).confidence}</div>
+          <div><strong>Good sensors:</strong> ${formatNumber(wardQcForProps(props).goodSensorCount || 0)}</div>
+          <div><strong>Usable sensors:</strong> ${formatNumber(wardQcForProps(props).usableSensorCount || 0)}</div>
+          <div><strong>Avg QC score:</strong> ${formatNumber(wardQcForProps(props).avgQcScore || 0, 1)} / 100</div>
+        ` : '<div><strong>QC confidence:</strong> Not scored</div>'}
         <div><strong>Population:</strong> ${formatNumber(props.POP_TOTAL)}</div>
         <div><strong>Area:</strong> ${formatNumber(props.AREA_SQ_KM, 2)} sq km</div>
+        ${wardCriticalityByNo.get(String(wardNumber(props))) ? `
+  <div><strong>Criticality:</strong> ${wardCriticalityByNo.get(String(wardNumber(props))).criticalityStatus}</div>
+  <div><strong>Criticality score:</strong> ${formatNumber(wardCriticalityByNo.get(String(wardNumber(props))).criticalityScore || 0, 1)} / 100</div>
+  <div><strong>Reasons:</strong> ${(wardCriticalityByNo.get(String(wardNumber(props))).reasons || []).join(', ') || 'None'}</div>
+` : '<div><strong>Criticality:</strong> Not scored</div>'}
       `;
     };
+document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    wardLayerMode = button.dataset.wardMode;
+    document.querySelectorAll('button[data-ward-mode]').forEach((item) => {
+      item.classList.toggle('active', item.dataset.wardMode === wardLayerMode);
+    });
+    refreshWardPopups();
+  });
+});
 
     const refreshWardPopups = () => {
       for (const layer of wardLayers) {
-        if (layer.feature) layer.bindPopup(wardPopupHtml(layer.feature));
+        if (layer.feature) {
+          layer.setStyle(wardStyle(layer.feature));
+          layer.bindPopup(wardPopupHtml(layer.feature));
+        }
       }
     };
 
@@ -611,7 +685,7 @@
       wardLayers = [];
       assignSensorsToWards();
       shapeLayer = L.geoJSON({ type: 'FeatureCollection', features: wardFeatures }, {
-        style: { color: '#00695c', weight: 2, opacity: 0.95, fillColor: '#26a69a', fillOpacity: 0.12 },
+        style: wardStyle,
         onEachFeature: (feature, layer) => {
           wardLayers.push(layer);
           layer.bindPopup(wardPopupHtml(feature));
@@ -621,9 +695,11 @@
     };
 
     const loadSensors = async () => {
-      const [sensorResponse, qcResponse] = await Promise.all([
+      const [sensorResponse, qcResponse, wardQcResponse, criticalityResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors`),
-        fetch(`${API_BASE_URL}/api/qc/sensors`)
+        fetch(`${API_BASE_URL}/api/qc/sensors`),
+        fetch(`${API_BASE_URL}/api/qc/wards`),
+        fetch(`${API_BASE_URL}/api/criticality/wards`)
       ]);
       if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await sensorResponse.json();
@@ -631,7 +707,12 @@
       if (qcResponse.ok) {
         qcPayload = await qcResponse.json();
       }
+      let wardQcPayload = { wards: [] };
+      if (wardQcResponse.ok) {
+        wardQcPayload = await wardQcResponse.json();
+      }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
+      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [String(item.wardNo), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -908,10 +989,15 @@
       const div = L.DomUtil.create('div', 'legend');
       L.DomEvent.disableClickPropagation(div);
       div.innerHTML = `
+        <div class="legend-title">Sensor data</div>
         <button class="legend-row" data-filter="both" type="button"><span class="dot" style="background:#007a3d"></span>Water Level + discharge</button>
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>Water Level only</button>
         <button class="legend-row" data-filter="discharge" type="button"><span class="dot" style="background:#f59e0b"></span>Discharge only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
+        <div class="legend-title legend-title-spaced">Ward QC confidence</div>
+        <div class="legend-row"><span class="line-swatch" style="background:#0f8f4d"></span>High</div>
+        <div class="legend-row"><span class="line-swatch" style="background:#f2a900"></span>Medium</div>
+        <div class="legend-row"><span class="line-swatch" style="background:#d64545"></span>Low</div>
       `;
       return div;
     };
