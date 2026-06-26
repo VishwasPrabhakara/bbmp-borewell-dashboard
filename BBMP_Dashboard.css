@@ -369,6 +369,10 @@
       min-width: 0;
     }
 
+    .detail-wide {
+      grid-column: 1 / -1;
+    }
+
     .detail span {
       display: block;
       color: var(--muted);

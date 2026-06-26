@@ -79,6 +79,9 @@
           <div class="detail"><span>Last Data</span><strong id="detailLastData">-</strong></div>
           <div class="detail"><span>Readings</span><strong id="detailReadings">-</strong></div>
           <div class="detail"><span>Data Type</span><strong id="detailDataType">-</strong></div>
+          <div class="detail"><span>QC Status</span><strong id="detailQcStatus">-</strong></div>
+          <div class="detail"><span>QC Score</span><strong id="detailQcScore">-</strong></div>
+          <div class="detail detail-wide"><span>QC Flags</span><strong id="detailQcFlags">-</strong></div>
         </section>
 
         <section class="controls">
@@ -135,6 +138,7 @@
     let shapeLayer = null;
     let sensorLayer = L.layerGroup().addTo(map);
     let sensors = [];
+    let sensorQcByUid = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -165,6 +169,9 @@
       detailLastData: document.getElementById('detailLastData'),
       detailReadings: document.getElementById('detailReadings'),
       detailDataType: document.getElementById('detailDataType'),
+      detailQcStatus: document.getElementById('detailQcStatus'),
+      detailQcScore: document.getElementById('detailQcScore'),
+      detailQcFlags: document.getElementById('detailQcFlags'),
       waterEmpty: document.getElementById('waterEmpty'),
       dischargeEmpty: document.getElementById('dischargeEmpty'),
       downloadWaterChart: document.getElementById('downloadWaterChart'),
@@ -188,6 +195,14 @@
       water: '#1d4ed8',
       discharge: '#f59e0b',
       none: '#d12f2f'
+    };
+
+    const qcStatusLabels = {
+      GOOD: 'Good',
+      USABLE_WITH_CAUTION: 'Usable with caution',
+      POOR: 'Poor',
+      INSUFFICIENT_DATA: 'Insufficient data',
+      NO_DATA: 'No data'
     };
 
     const colorForSensor = (sensor) => dataCategoryColors[sensor.dataCategory || 'none'];
@@ -557,10 +572,21 @@
     };
 
     const loadSensors = async () => {
-      const response = await fetch(`${API_BASE_URL}/api/sensors`);
-      if (!response.ok) throw new Error('Could not load sensors from local dashboard server.');
-      const payload = await response.json();
-      sensors = payload.sensors || [];
+      const [sensorResponse, qcResponse] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/sensors`),
+        fetch(`${API_BASE_URL}/api/qc/sensors`)
+      ]);
+      if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
+      const payload = await sensorResponse.json();
+      let qcPayload = { sensors: [] };
+      if (qcResponse.ok) {
+        qcPayload = await qcResponse.json();
+      }
+      sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
+      sensors = (payload.sensors || []).map((sensor) => ({
+        ...sensor,
+        qc: sensorQcByUid.get(String(sensor.uid)) || null
+      }));
       assignSensorsToWards();
       renderSensors();
       fitSensors();
@@ -799,6 +825,10 @@
       els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
       els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
       els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'];
+      const qc = sensor.qc || sensorQcByUid.get(String(sensor.uid));
+      els.detailQcStatus.textContent = qc ? (qcStatusLabels[qc.qcStatus] || qc.qcStatus || '-') : '-';
+      els.detailQcScore.textContent = qc ? `${formatNumber(qc.overallQcScore || 0, 1)} / 100` : '-';
+      els.detailQcFlags.textContent = qc?.flags?.length ? qc.flags.join(', ') : (qc ? 'None' : '-');
 
       if (moveMap && hasValidLocation(sensor)) {
         map.setView([Number(sensor.lat), Number(sensor.lng)], Math.max(map.getZoom(), 15), { animate: true });
