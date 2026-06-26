@@ -45,6 +45,26 @@
           <strong id="withoutDataCount">0</strong>
           <span>No Data</span>
         </div>
+        <div class="stat">
+          <strong id="goodQcCount">0</strong>
+          <span>Good QC</span>
+        </div>
+        <div class="stat">
+          <strong id="reviewQcCount">0</strong>
+          <span>Review QC</span>
+        </div>
+      </section>
+
+      <section class="controls qc-controls">
+        <h2>QC Filter</h2>
+        <div class="qc-filter-grid">
+          <button class="active" data-qc-filter="" type="button">All</button>
+          <button data-qc-filter="GOOD" type="button">Good</button>
+          <button data-qc-filter="USABLE_WITH_CAUTION" type="button">Caution</button>
+          <button data-qc-filter="POOR" type="button">Poor</button>
+          <button data-qc-filter="INSUFFICIENT_DATA" type="button">Low Data</button>
+          <button data-qc-filter="NO_DATA" type="button">No Data</button>
+        </div>
       </section>
 
       <section class="filter-summary">
@@ -83,6 +103,11 @@
           <div class="detail"><span>QC Score</span><strong id="detailQcScore">-</strong></div>
           <div class="detail detail-wide"><span>QC Flags</span><strong id="detailQcFlags">-</strong></div>
         </section>
+
+        <details class="qc-note">
+          <summary>QC score method</summary>
+          <p>QC checks coverage, valid ranges, stability, and recent reporting. Flags show the main reasons a sensor may need caution, such as long gaps, spikes, flatlines, or missing water-level/discharge data.</p>
+        </details>
 
         <section class="controls">
           <div class="button-row">
@@ -156,6 +181,8 @@
       totalCount: document.getElementById('totalCount'),
       withDataCount: document.getElementById('withDataCount'),
       withoutDataCount: document.getElementById('withoutDataCount'),
+      goodQcCount: document.getElementById('goodQcCount'),
+      reviewQcCount: document.getElementById('reviewQcCount'),
       filteredCount: document.getElementById('filteredCount'),
       exportFiltered: document.getElementById('exportFiltered'),
       toast: document.getElementById('toast'),
@@ -182,6 +209,7 @@
     };
 
     let legendFilter = '';
+    let qcFilter = '';
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -205,7 +233,23 @@
       NO_DATA: 'No data'
     };
 
+    const qcStatusClass = {
+      GOOD: 'good',
+      USABLE_WITH_CAUTION: 'caution',
+      POOR: 'poor',
+      INSUFFICIENT_DATA: 'low-data',
+      NO_DATA: 'no-data'
+    };
+
     const colorForSensor = (sensor) => dataCategoryColors[sensor.dataCategory || 'none'];
+    const qcForSensor = (sensor) => sensor.qc || sensorQcByUid.get(String(sensor.uid));
+    const qcStatusForSensor = (sensor) => qcForSensor(sensor)?.qcStatus || '';
+    const qcBadgeHtml = (status) => {
+      if (!status) return '-';
+      const label = qcStatusLabels[status] || status;
+      const className = qcStatusClass[status] || 'unknown';
+      return `<span class="qc-badge ${className}">${label}</span>`;
+    };
     const formatNumber = (value, decimals = 0) => {
       const number = Number(value);
       if (!Number.isFinite(number)) return value || '-';
@@ -341,6 +385,7 @@
       <div><strong>Ward Name:</strong> ${sensor.wardName || 'Not matched'}</div>
       <div><strong>Lat/Lon:</strong> ${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}</div>
       <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none']}</div>
+      <div><strong>QC:</strong> ${qcStatusLabels[qcStatusForSensor(sensor)] || 'Not scored'}</div>
       <div><strong>First Data:</strong> ${formatDateTime(sensor.firstDataAt)}</div>
       <div><strong>Last Data:</strong> ${formatDateTime(sensor.lastDataAt)}</div>
       <div><strong>Readings:</strong> ${formatNumber(sensor.totalReadings || 0)}</div>
@@ -351,7 +396,8 @@
       return sensors.filter((sensor) => {
         const text = [sensor.uid, sensor.wardNo, sensor.wardName].join(' ').toLowerCase();
         const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
-        return dataMatch && (!query || text.includes(query));
+        const qcMatch = !qcFilter || qcStatusForSensor(sensor) === qcFilter;
+        return dataMatch && qcMatch && (!query || text.includes(query));
       });
     };
 
@@ -361,6 +407,8 @@
       els.totalCount.textContent = String(sensors.length);
       els.withDataCount.textContent = String(sensors.filter((sensor) => sensor.hasData).length);
       els.withoutDataCount.textContent = String(sensors.filter((sensor) => !sensor.hasData).length);
+      els.goodQcCount.textContent = String(sensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length);
+      els.reviewQcCount.textContent = String(sensors.filter((sensor) => ['USABLE_WITH_CAUTION', 'POOR', 'INSUFFICIENT_DATA'].includes(qcStatusForSensor(sensor))).length);
       els.filteredCount.textContent = String(visible.length);
       els.exportFiltered.disabled = !visible.length;
 
@@ -376,7 +424,7 @@
 
     const renderList = (visible) => {
       els.sensorList.innerHTML = '';
-      if (!els.search.value.trim() && !legendFilter) {
+      if (!els.search.value.trim() && !legendFilter && !qcFilter) {
         const empty = document.createElement('div');
         empty.className = 'sensor-meta';
         empty.style.padding = '14px 10px';
@@ -393,12 +441,13 @@
         return;
       }
       for (const sensor of visible) {
+        const status = qcStatusForSensor(sensor);
         const item = document.createElement('button');
         item.className = `sensor-item${selectedSensor?.uid === sensor.uid ? ' active' : ''}`;
         item.innerHTML = `
           <span class="dot" style="background:${colorForSensor(sensor)}"></span>
           <span>
-            <span class="sensor-name">${sensor.uid}</span>
+            <span class="sensor-row-head"><span class="sensor-name">${sensor.uid}</span>${qcBadgeHtml(status)}</span>
             <span class="sensor-meta">Ward ${sensor.wardNo || '-'}${sensor.wardName ? ' / ' + sensor.wardName : ''} / ${dataCategoryLabels[sensor.dataCategory || 'none']}</span>
           </span>
         `;
@@ -825,8 +874,8 @@
       els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
       els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
       els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'];
-      const qc = sensor.qc || sensorQcByUid.get(String(sensor.uid));
-      els.detailQcStatus.textContent = qc ? (qcStatusLabels[qc.qcStatus] || qc.qcStatus || '-') : '-';
+      const qc = qcForSensor(sensor);
+      els.detailQcStatus.innerHTML = qc ? qcBadgeHtml(qc.qcStatus) : '-';
       els.detailQcScore.textContent = qc ? `${formatNumber(qc.overallQcScore || 0, 1)} / 100` : '-';
       els.detailQcFlags.textContent = qc?.flags?.length ? qc.flags.join(', ') : (qc ? 'None' : '-');
 
@@ -874,10 +923,25 @@
       });
     };
 
+    const updateQcFilterUi = () => {
+      document.querySelectorAll('button[data-qc-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.qcFilter === qcFilter);
+      });
+    };
+
     document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
       button.addEventListener('click', () => {
         legendFilter = legendFilter === button.dataset.filter ? '' : button.dataset.filter;
         updateLegendFilterUi();
+        renderSensors();
+        fitSensors();
+      });
+    });
+
+    document.querySelectorAll('button[data-qc-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        qcFilter = button.dataset.qcFilter || '';
+        updateQcFilterUi();
         renderSensors();
         fitSensors();
       });
