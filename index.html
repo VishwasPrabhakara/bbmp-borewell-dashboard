@@ -73,6 +73,7 @@
           <button class="active" data-ward-mode="qc" type="button">QC Confidence</button>
           <button data-ward-mode="criticality" type="button">Criticality</button>
         </div>
+        <button id="downloadCriticalityCsv" class="primary" type="button">Download Criticality CSV</button>
       </section>
 
       <section class="filter-summary">
@@ -408,6 +409,14 @@
         ${criticality ? `
           <div><strong>Criticality:</strong> ${criticality.criticalityStatus}</div>
           <div><strong>Criticality score:</strong> ${formatNumber(criticality.criticalityScore || 0, 1)} / 100</div>
+          <div><strong>Demand score:</strong> ${formatNumber(criticality.demandScore || 0, 1)} / 100</div>
+          <div><strong>Depletion score:</strong> ${formatNumber(criticality.depletionScore || 0, 1)} / 100</div>
+          <div><strong>Discharge decline score:</strong> ${formatNumber(criticality.dischargeDeclineScore || 0, 1)} / 100</div>
+          <div><strong>Recovery score:</strong> ${formatNumber(criticality.recoveryScore || 0, 1)} / 100</div>
+          <div><strong>Water trend:</strong> ${criticality.waterLevelTrendFtPerYear == null ? '-' : `${formatNumber(criticality.waterLevelTrendFtPerYear, 2)} ft/year`}</div>
+          <div><strong>Discharge trend:</strong> ${criticality.dischargeTrendLpmPerYear == null ? '-' : `${formatNumber(criticality.dischargeTrendLpmPerYear, 1)} LPM/year`}</div>
+          <div><strong>Rainfall response:</strong> ${criticality.rainfallResponseFt == null ? '-' : `${formatNumber(criticality.rainfallResponseFt, 2)} ft`}</div>
+          <div><strong>90-day rainfall:</strong> ${criticality.recent90DayRainfallMm == null ? '-' : `${formatNumber(criticality.recent90DayRainfallMm, 1)} mm`}</div>
           <div><strong>Reasons:</strong> ${(criticality.reasons || []).join(', ') || 'None'}</div>
         ` : '<div><strong>Criticality:</strong> Not scored</div>'}
       `;
@@ -1064,6 +1073,9 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
 
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
+    });
+    document.getElementById('downloadCriticalityCsv').addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/criticality/wards.csv`, '_blank', 'noopener');
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
