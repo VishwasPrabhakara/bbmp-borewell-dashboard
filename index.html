@@ -182,6 +182,8 @@
     let sensors = [];
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
+    let wardQcByName = new Map();
+    let wardCriticalityByName = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -297,10 +299,15 @@
       if (Number.isFinite(number)) return String(Math.trunc(number));
       return String(value ?? '').trim();
     };
+    const normalizeWardName = (value) => String(value ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
     const wardNumber = (props = {}) => normalizeWardNo(rawWardNumber(props));
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
-    const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props));
-    const wardCriticalityForProps = (props = {}) => wardCriticalityByNo.get(wardNumber(props));
+    const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
+    const wardCriticalityForProps = (props = {}) => wardCriticalityByNo.get(wardNumber(props)) || wardCriticalityByName.get(normalizeWardName(wardName(props)));
     const wardStyle = (feature) => {
       const wardNo = wardNumber(feature.properties || {});
 
@@ -726,7 +733,9 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
       }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardCriticalityByNo = new Map((criticalityPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardCriticalityByName = new Map((criticalityPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
