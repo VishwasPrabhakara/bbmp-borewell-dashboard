@@ -291,13 +291,20 @@
         minute: '2-digit'
       });
     };
-    const wardNumber = (props = {}) => formatNumber(props.WARD_NO ?? props.ward_no ?? props.ward ?? props.WARD, 0);
+    const rawWardNumber = (props = {}) => props.WARD_NO ?? props.ward_no ?? props.ward ?? props.WARD;
+    const normalizeWardNo = (value) => {
+      const number = Number(value);
+      if (Number.isFinite(number)) return String(Math.trunc(number));
+      return String(value ?? '').trim();
+    };
+    const wardNumber = (props = {}) => normalizeWardNo(rawWardNumber(props));
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
-    const wardQcForProps = (props = {}) => wardQcByNo.get(String(wardNumber(props)));
+    const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props));
+    const wardCriticalityForProps = (props = {}) => wardCriticalityByNo.get(wardNumber(props));
     const wardStyle = (feature) => {
-  const wardNo = String(wardNumber(feature.properties || {}));
+      const wardNo = wardNumber(feature.properties || {});
 
-  if (wardLayerMode === 'criticality') {
+      if (wardLayerMode === 'criticality') {
         const item = wardCriticalityByNo.get(wardNo);
         const status = item?.criticalityStatus;
         const color = criticalityColors[status] || '#00695c';
@@ -375,25 +382,27 @@
       const withData = props._sensorWithDataCount || 0;
       const withoutData = props._sensorWithoutDataCount || 0;
       const withDataPercent = count ? ((withData / count) * 100).toFixed(1) : '0.0';
+      const wardQc = wardQcForProps(props);
+      const criticality = wardCriticalityForProps(props);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>Without data:</strong> ${formatNumber(withoutData)}</div>
         <div><strong>Data coverage:</strong> ${withDataPercent}%</div>
-        ${wardQcForProps(props) ? `
-          <div><strong>QC confidence:</strong> ${wardQcForProps(props).confidence}</div>
-          <div><strong>Good sensors:</strong> ${formatNumber(wardQcForProps(props).goodSensorCount || 0)}</div>
-          <div><strong>Usable sensors:</strong> ${formatNumber(wardQcForProps(props).usableSensorCount || 0)}</div>
-          <div><strong>Avg QC score:</strong> ${formatNumber(wardQcForProps(props).avgQcScore || 0, 1)} / 100</div>
+        ${wardQc ? `
+          <div><strong>QC confidence:</strong> ${wardQc.confidence}</div>
+          <div><strong>Good sensors:</strong> ${formatNumber(wardQc.goodSensorCount || 0)}</div>
+          <div><strong>Usable sensors:</strong> ${formatNumber(wardQc.usableSensorCount || 0)}</div>
+          <div><strong>Avg QC score:</strong> ${formatNumber(wardQc.avgQcScore || 0, 1)} / 100</div>
         ` : '<div><strong>QC confidence:</strong> Not scored</div>'}
         <div><strong>Population:</strong> ${formatNumber(props.POP_TOTAL)}</div>
         <div><strong>Area:</strong> ${formatNumber(props.AREA_SQ_KM, 2)} sq km</div>
-        ${wardCriticalityByNo.get(String(wardNumber(props))) ? `
-  <div><strong>Criticality:</strong> ${wardCriticalityByNo.get(String(wardNumber(props))).criticalityStatus}</div>
-  <div><strong>Criticality score:</strong> ${formatNumber(wardCriticalityByNo.get(String(wardNumber(props))).criticalityScore || 0, 1)} / 100</div>
-  <div><strong>Reasons:</strong> ${(wardCriticalityByNo.get(String(wardNumber(props))).reasons || []).join(', ') || 'None'}</div>
-` : '<div><strong>Criticality:</strong> Not scored</div>'}
+        ${criticality ? `
+          <div><strong>Criticality:</strong> ${criticality.criticalityStatus}</div>
+          <div><strong>Criticality score:</strong> ${formatNumber(criticality.criticalityScore || 0, 1)} / 100</div>
+          <div><strong>Reasons:</strong> ${(criticality.reasons || []).join(', ') || 'None'}</div>
+        ` : '<div><strong>Criticality:</strong> Not scored</div>'}
       `;
     };
 document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
@@ -711,8 +720,13 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
       if (wardQcResponse.ok) {
         wardQcPayload = await wardQcResponse.json();
       }
+      let criticalityPayload = { wards: [] };
+      if (criticalityResponse.ok) {
+        criticalityPayload = await criticalityResponse.json();
+      }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
-      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [String(item.wardNo), item]));
+      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardCriticalityByNo = new Map((criticalityPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
