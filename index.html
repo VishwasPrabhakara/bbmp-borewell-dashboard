@@ -73,7 +73,10 @@
           <button class="active" data-ward-mode="qc" type="button">QC Confidence</button>
           <button data-ward-mode="criticality" type="button">Criticality</button>
         </div>
-        <button id="downloadCriticalityCsv" class="primary" type="button">Download Criticality CSV</button>
+        <div class="button-row">
+          <button id="downloadCriticalityCsv" class="primary" type="button">Criticality CSV</button>
+          <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
+        </div>
       </section>
 
       <section class="filter-summary">
@@ -413,8 +416,11 @@
           <div><strong>Depletion score:</strong> ${formatNumber(criticality.depletionScore || 0, 1)} / 100</div>
           <div><strong>Discharge decline score:</strong> ${formatNumber(criticality.dischargeDeclineScore || 0, 1)} / 100</div>
           <div><strong>Recovery score:</strong> ${formatNumber(criticality.recoveryScore || 0, 1)} / 100</div>
-          <div><strong>Water trend:</strong> ${criticality.waterLevelTrendFtPerYear == null ? '-' : `${formatNumber(criticality.waterLevelTrendFtPerYear, 2)} ft/year`}</div>
-          <div><strong>Discharge trend:</strong> ${criticality.dischargeTrendLpmPerYear == null ? '-' : `${formatNumber(criticality.dischargeTrendLpmPerYear, 1)} LPM/year`}</div>
+          <div><strong>GW loss weekly:</strong> ${criticality.waterLevelTrendFtPerWeek == null ? '-' : `${formatNumber(criticality.waterLevelTrendFtPerWeek, 2)} ft/week`}</div>
+          <div><strong>GW loss monthly:</strong> ${criticality.waterLevelTrendFtPerMonth == null ? '-' : `${formatNumber(criticality.waterLevelTrendFtPerMonth, 2)} ft/month`}</div>
+          <div><strong>GW loss yearly:</strong> ${criticality.waterLevelTrendFtPerYear == null ? '-' : `${formatNumber(criticality.waterLevelTrendFtPerYear, 2)} ft/year`}</div>
+          <div><strong>Discharge trend monthly:</strong> ${criticality.dischargeTrendLpmPerMonth == null ? '-' : `${formatNumber(criticality.dischargeTrendLpmPerMonth, 1)} LPM/month`}</div>
+          <div><strong>Discharge trend yearly:</strong> ${criticality.dischargeTrendLpmPerYear == null ? '-' : `${formatNumber(criticality.dischargeTrendLpmPerYear, 1)} LPM/year`}</div>
           <div><strong>Rainfall response:</strong> ${criticality.rainfallResponseFt == null ? '-' : `${formatNumber(criticality.rainfallResponseFt, 2)} ft`}</div>
           <div><strong>90-day rainfall:</strong> ${criticality.recent90DayRainfallMm == null ? '-' : `${formatNumber(criticality.recent90DayRainfallMm, 1)} mm`}</div>
           <div><strong>Reasons:</strong> ${(criticality.reasons || []).join(', ') || 'None'}</div>
@@ -1076,6 +1082,9 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
     });
     document.getElementById('downloadCriticalityCsv').addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/criticality/wards.csv`, '_blank', 'noopener');
+    });
+    document.getElementById('downloadGwLossCsv').addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/groundwater-loss/wards.csv`, '_blank', 'noopener');
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
