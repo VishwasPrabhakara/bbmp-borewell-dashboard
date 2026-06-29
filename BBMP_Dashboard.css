@@ -31,7 +31,7 @@
       height: 100vh;
       min-height: 720px;
       display: grid;
-      grid-template-columns: minmax(330px, 390px) 1fr minmax(360px, 470px);
+      grid-template-columns: minmax(360px, 420px) 1fr minmax(360px, 440px);
       transition: grid-template-columns 0.2s ease;
     }
 
@@ -40,7 +40,7 @@
     }
 
     .app.left-collapsed {
-      grid-template-columns: 0 1fr minmax(360px, 470px);
+      grid-template-columns: 0 1fr minmax(360px, 440px);
     }
 
     .app.left-collapsed.chart-wide {
@@ -48,7 +48,7 @@
     }
 
     .app.right-collapsed {
-      grid-template-columns: minmax(330px, 390px) 1fr 0;
+      grid-template-columns: minmax(360px, 420px) 1fr 0;
     }
 
     .app.left-collapsed.right-collapsed {
@@ -90,11 +90,11 @@
     }
 
     #toggleLeft {
-      left: 404px;
+      left: 434px;
     }
 
     #toggleRight {
-      right: 484px;
+      right: 454px;
     }
 
     .app.chart-wide #toggleRight {
@@ -110,7 +110,7 @@
     }
 
     header, .panel-section {
-      padding: 16px 18px;
+      padding: 18px 20px;
       border-bottom: 1px solid var(--line);
     }
 
@@ -176,7 +176,7 @@
     }
 
     .controls {
-      padding: 14px 18px;
+      padding: 16px 20px;
       display: grid;
       gap: 12px;
       border-bottom: 1px solid var(--line);
@@ -189,16 +189,20 @@
     }
 
     .stats {
-      padding: 12px 18px;
+      padding: 14px 20px;
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 9px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
       border-bottom: 1px solid var(--line);
+    }
+
+    .stats .stat:first-child {
+      grid-column: 1 / -1;
     }
 
     .qc-filter-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
 
@@ -215,8 +219,73 @@
       font-weight: 700;
     }
 
+    .info-panel {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: #f8fbfc;
+      display: grid;
+      gap: 12px;
+    }
+
+    .info-panel.compact {
+      background: #fff;
+    }
+
+    .info-panel h2 {
+      margin-bottom: 0;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .info-grid div {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .info-grid strong,
+    .status-guide span {
+      display: block;
+      font-size: 12px;
+      line-height: 1.3;
+    }
+
+    .info-grid span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .status-guide {
+      display: grid;
+      gap: 8px;
+    }
+
+    .status-guide span {
+      display: grid;
+      grid-template-columns: 14px 1fr;
+      gap: 8px;
+      align-items: center;
+      color: #344252;
+    }
+
+    .status-guide i {
+      width: 14px;
+      height: 4px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
     .filter-summary {
-      padding: 12px 18px;
+      padding: 14px 20px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
@@ -254,7 +323,7 @@
     .list {
       flex: 1;
       overflow: auto;
-      padding: 10px;
+      padding: 12px;
     }
 
     .sensor-item {
@@ -403,7 +472,7 @@
     .details-body {
       flex: 1;
       overflow: auto;
-      padding: 16px 18px 20px;
+      padding: 18px 20px 22px;
       display: grid;
       align-content: start;
       gap: 16px;
@@ -589,5 +658,32 @@
       #toggleRight {
         right: 12px;
         top: 12px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      header, .panel-section,
+      .controls,
+      .stats,
+      .info-panel,
+      .filter-summary,
+      .details-body {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .info-grid,
+      .detail-grid,
+      .button-row,
+      .filter-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .range-tabs {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .filter-summary button {
+        min-width: 0;
       }
     }

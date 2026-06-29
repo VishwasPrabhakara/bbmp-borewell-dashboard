@@ -55,6 +55,28 @@
         </div>
       </section>
 
+      <section class="info-panel">
+        <h2>How to read this</h2>
+        <div class="info-grid">
+          <div>
+            <strong>Sensor dots</strong>
+            <span>Water-level/discharge availability.</span>
+          </div>
+          <div>
+            <strong>Ward layer</strong>
+            <span>QC confidence or criticality.</span>
+          </div>
+          <div>
+            <strong>QC</strong>
+            <span>Sensor reliability score.</span>
+          </div>
+          <div>
+            <strong>Criticality</strong>
+            <span>Demand, GW loss, discharge, recovery, rainfall.</span>
+          </div>
+        </div>
+      </section>
+
       <section class="controls qc-controls">
         <h2>QC Filter</h2>
         <div class="qc-filter-grid">
@@ -76,6 +98,20 @@
         <div class="button-row">
           <button id="downloadCriticalityCsv" class="primary" type="button">Criticality CSV</button>
           <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
+        </div>
+      </section>
+
+      <section class="info-panel compact">
+        <h2>Categorization</h2>
+        <div class="status-guide">
+          <span><i style="background:#0f8f4d"></i>High QC: enough reliable sensors</span>
+          <span><i style="background:#f2a900"></i>Medium QC: usable with caution</span>
+          <span><i style="background:#d64545"></i>Low QC: weak sensor evidence</span>
+          <span><i style="background:#b91c1c"></i>Critical: score 75+ with enough usable sensors</span>
+          <span><i style="background:#f97316"></i>High Risk: score 55-74</span>
+          <span><i style="background:#facc15"></i>Watchlist: score 35-54</span>
+          <span><i style="background:#16a34a"></i>Stable: score below 35</span>
+          <span><i style="background:#6b7280"></i>Insufficient Data: low QC or fewer than 2 usable sensors</span>
         </div>
       </section>
 
@@ -118,7 +154,12 @@
 
         <details class="qc-note">
           <summary>QC score method</summary>
-          <p>QC checks coverage, valid ranges, stability, and recent reporting. Flags show the main reasons a sensor may need caution, such as long gaps, spikes, flatlines, or missing water-level/discharge data.</p>
+          <p>QC combines coverage, physical range checks, stability, and recent reporting. Range checks include valid water/discharge values and Type-B sessions where on level should be greater than off level. Flags show why a sensor may need caution, such as long gaps, spikes, flatlines, missing data, or invalid on/off readings.</p>
+        </details>
+
+        <details class="qc-note">
+          <summary>Criticality score method</summary>
+          <p>Ward criticality combines consumption pressure, groundwater loss, discharge decline, rainfall recovery, and recent CHIRPS rainfall. Higher score means higher concern. Wards with weak sensor confidence are kept as Insufficient Data instead of being forced into a risk category.</p>
         </details>
 
         <section class="controls">
