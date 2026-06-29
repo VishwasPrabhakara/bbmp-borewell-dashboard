@@ -81,15 +81,15 @@
           </div>
           <div>
             <strong>Ward layer</strong>
-            <span>QC confidence or criticality.</span>
+            <span>QC confidence by ward.</span>
           </div>
           <div>
             <strong>QC</strong>
             <span>Sensor reliability score.</span>
           </div>
           <div>
-            <strong>Criticality</strong>
-            <span>Demand, GW loss, discharge, recovery, rainfall.</span>
+            <strong>GW loss</strong>
+            <span>Positive weekly/monthly values mean groundwater is dropping.</span>
           </div>
         </div>
       </details>
@@ -98,10 +98,6 @@
         <h2>Ward Layer</h2>
         <div class="button-row">
           <button class="active" data-ward-mode="qc" type="button">QC Confidence</button>
-          <button data-ward-mode="criticality" type="button">Criticality</button>
-        </div>
-        <div class="button-row">
-          <button id="downloadCriticalityCsv" class="primary" type="button">Criticality CSV</button>
           <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
         </div>
       </section>
@@ -113,11 +109,7 @@
           <span><i style="background:#0f8f4d"></i>High QC: enough reliable sensors</span>
           <span><i style="background:#f2a900"></i>Medium QC: usable with caution</span>
           <span><i style="background:#d64545"></i>Low QC: weak sensor evidence</span>
-          <span><i style="background:#b91c1c"></i>Critical: score 75+ with enough usable sensors</span>
-          <span><i style="background:#f97316"></i>High Risk: score 55-74</span>
-          <span><i style="background:#facc15"></i>Watchlist: score 35-54</span>
-          <span><i style="background:#16a34a"></i>Stable: score below 35</span>
-          <span><i style="background:#6b7280"></i>Insufficient Data: low QC or fewer than 2 usable sensors</span>
+          <span><i style="background:#6b7280"></i>Unscored: no ward-level QC summary yet</span>
         </div>
       </details>
 
@@ -165,11 +157,6 @@
           <p>QC combines coverage, physical range checks, stability, and recent reporting. Range checks include valid water/discharge values and Type-B sessions where on level should be greater than off level. Flags show why a sensor may need caution, such as long gaps, spikes, flatlines, missing data, or invalid on/off readings.</p>
         </details>
 
-        <details class="qc-note">
-          <summary>Criticality score method</summary>
-          <p>Ward criticality combines consumption pressure, groundwater loss, discharge decline, rainfall recovery, and recent CHIRPS rainfall. Higher score means higher concern. Wards with weak sensor confidence are kept as Insufficient Data instead of being forced into a risk category.</p>
-        </details>
-
         <section class="controls" id="sensorExportControls">
           <div class="button-row">
             <button id="exportSelected" class="primary" type="button">Export selected CSV</button>
@@ -212,14 +199,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
     let wardLayerMode = 'qc';
-    let wardCriticalityByNo = new Map();
-    const criticalityColors = {
-      Critical: '#b91c1c',
-      'High Risk': '#f97316',
-      Watchlist: '#facc15',
-      Stable: '#16a34a',
-      'Insufficient Data': '#6b7280'
-    };
+    let wardIndicatorsByNo = new Map();
     const bangaloreCenter = [12.9716, 77.5946];
     const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
@@ -236,7 +216,7 @@
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
     let wardQcByName = new Map();
-    let wardCriticalityByName = new Map();
+    let wardIndicatorsByName = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -369,7 +349,7 @@
     const wardNumber = (props = {}) => normalizeWardNo(rawWardNumber(props));
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
     const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
-    const wardCriticalityForProps = (props = {}) => wardCriticalityByNo.get(wardNumber(props)) || wardCriticalityByName.get(normalizeWardName(wardName(props)));
+    const wardIndicatorsForProps = (props = {}) => wardIndicatorsByNo.get(wardNumber(props)) || wardIndicatorsByName.get(normalizeWardName(wardName(props)));
     const setSensorSectionsVisible = (visible) => {
       [
         els.sensorDetailGrid,
@@ -383,21 +363,6 @@
       if (els.wardDetailPanel) els.wardDetailPanel.style.display = visible ? 'none' : '';
     };
     const wardStyle = (feature) => {
-      const wardNo = wardNumber(feature.properties || {});
-
-      if (wardLayerMode === 'criticality') {
-        const item = wardCriticalityByNo.get(wardNo);
-        const status = item?.criticalityStatus;
-        const color = criticalityColors[status] || '#00695c';
-        return {
-          color,
-          weight: item ? 3 : 2,
-          opacity: 0.95,
-          fillColor: color,
-          fillOpacity: item ? 0.30 : 0.12
-        };
-      }
-
       const confidence = wardQcForProps(feature.properties || {})?.confidence;
       const color = wardConfidenceColors[confidence] || '#00695c';
       return {
@@ -462,30 +427,18 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const wardQc = wardQcForProps(props);
-      const criticality = wardCriticalityForProps(props);
+      const indicators = wardIndicatorsForProps(props);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>QC:</strong> ${wardQc?.confidence || 'Not scored'}</div>
-        ${criticality ? `
-          <div><strong>Criticality:</strong> ${criticality.criticalityStatus}</div>
-          <div><strong>Monthly GW loss:</strong> ${formatTrend(criticality.waterLevelTrendFtPerMonth, 'ft/month')}</div>
-          <div><strong>Weekly GW loss:</strong> ${formatTrend(criticality.waterLevelTrendFtPerWeek, 'ft/week')}</div>
-          <div><strong>90-day rainfall:</strong> ${formatTrend(criticality.recent90DayRainfallMm, 'mm', 1)}</div>
-        ` : '<div><strong>Criticality:</strong> Not scored</div>'}
+        <div><strong>Monthly GW loss:</strong> ${formatTrend(indicators?.waterLevelTrendFtPerMonth, 'ft/month')}</div>
+        <div><strong>Weekly GW loss:</strong> ${formatTrend(indicators?.waterLevelTrendFtPerWeek, 'ft/week')}</div>
+        <div><strong>90-day rainfall:</strong> ${formatTrend(indicators?.recent90DayRainfallMm, 'mm', 1)}</div>
         <div class="popup-hint">Click ward for full details.</div>
       `;
     };
-document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
-  button.addEventListener('click', () => {
-    wardLayerMode = button.dataset.wardMode;
-    document.querySelectorAll('button[data-ward-mode]').forEach((item) => {
-      item.classList.toggle('active', item.dataset.wardMode === wardLayerMode);
-    });
-    refreshWardPopups();
-  });
-});
 
     const refreshWardPopups = () => {
       for (const layer of wardLayers) {
@@ -550,11 +503,16 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
 
     const filteredSensors = () => {
       const query = els.search.value.trim().toLowerCase();
+      const normalizedQuery = normalizeWardName(query);
+      const numericQuery = normalizeWardNo(query);
       return sensors.filter((sensor) => {
         const text = [sensor.uid, sensor.wardNo, sensor.wardName].join(' ').toLowerCase();
+        const wardNumberMatch = query && sensor.wardNo && normalizeWardNo(sensor.wardNo) === numericQuery;
+        const wardNameMatch = normalizedQuery && normalizeWardName(sensor.wardName).includes(normalizedQuery);
+        const directMatch = !query || text.includes(query) || wardNumberMatch || wardNameMatch;
         const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
         const qcMatch = !qcFilter || qcStatusForSensor(sensor) === qcFilter;
-        return dataMatch && qcMatch && (!query || text.includes(query));
+        return dataMatch && qcMatch && directMatch;
       });
     };
 
@@ -779,11 +737,11 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
     };
 
     const loadSensors = async () => {
-      const [sensorResponse, qcResponse, wardQcResponse, criticalityResponse] = await Promise.all([
+      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors`),
         fetch(`${API_BASE_URL}/api/qc/sensors`),
         fetch(`${API_BASE_URL}/api/qc/wards`),
-        fetch(`${API_BASE_URL}/api/criticality/wards`)
+        fetch(`${API_BASE_URL}/api/indicators/wards`)
       ]);
       if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await sensorResponse.json();
@@ -795,15 +753,15 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
       if (wardQcResponse.ok) {
         wardQcPayload = await wardQcResponse.json();
       }
-      let criticalityPayload = { wards: [] };
-      if (criticalityResponse.ok) {
-        criticalityPayload = await criticalityResponse.json();
+      let indicatorsPayload = { wards: [] };
+      if (indicatorsResponse.ok) {
+        indicatorsPayload = await indicatorsResponse.json();
       }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardCriticalityByNo = new Map((criticalityPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      wardCriticalityByName = new Map((criticalityPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1090,10 +1048,18 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
       const withoutData = props._sensorWithoutDataCount || 0;
       const coverage = count ? `${formatNumber((withData / count) * 100, 1)}%` : '-';
       const wardQc = wardQcForProps(props);
-      const criticality = wardCriticalityForProps(props);
-      const monthlyLoss = criticality?.waterLevelTrendFtPerMonth;
-      const weeklyLoss = criticality?.waterLevelTrendFtPerWeek;
+      const indicators = wardIndicatorsForProps(props);
+      const monthlyLoss = indicators?.waterLevelTrendFtPerMonth;
+      const weeklyLoss = indicators?.waterLevelTrendFtPerWeek;
       const lossClass = Number(monthlyLoss) > 0 ? 'bad' : Number(monthlyLoss) < 0 ? 'good' : '';
+      const selectedWardNo = wardNumber(props);
+      const selectedWardName = normalizeWardName(wardName(props));
+      const wardSensors = sensors
+        .filter((sensor) => normalizeWardNo(sensor.wardNo) === selectedWardNo || normalizeWardName(sensor.wardName) === selectedWardName)
+        .sort((a, b) => String(a.uid).localeCompare(String(b.uid)));
+      const uidList = wardSensors.length
+        ? wardSensors.map((sensor) => `<span>${sensor.uid}</span>`).join('')
+        : '<span>No matched sensor UIDs</span>';
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide');
@@ -1108,7 +1074,7 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = 'Ward summary from sensor QC, consumption, groundwater trend, and CHIRPS rainfall.';
+      els.detailSubhead.textContent = 'Ward summary from sensor QC and groundwater trend indicators.';
       els.wardDetailPanel.innerHTML = `
         <section class="ward-summary-grid">
           ${wardMetric('Sensors', formatNumber(count))}
@@ -1117,19 +1083,22 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
           ${wardMetric('Coverage', coverage)}
           ${wardMetric('QC Confidence', wardQc?.confidence || 'Not scored')}
           ${wardMetric('Avg QC Score', wardQc ? formatScore(wardQc.avgQcScore) : '-')}
-          ${wardMetric('Criticality', criticality?.criticalityStatus || 'Not scored')}
-          ${wardMetric('Criticality Score', criticality ? formatScore(criticality.criticalityScore) : '-')}
           ${wardMetric('Monthly GW Loss', formatTrend(monthlyLoss, 'ft/month'), lossClass)}
           ${wardMetric('Weekly GW Loss', formatTrend(weeklyLoss, 'ft/week'), Number(weeklyLoss) > 0 ? 'bad' : Number(weeklyLoss) < 0 ? 'good' : '')}
-          ${wardMetric('90-day Rainfall', formatTrend(criticality?.recent90DayRainfallMm, 'mm', 1))}
-          ${wardMetric('Rainfall Recovery', formatTrend(criticality?.rainfallResponseFt, 'ft'))}
+          ${wardMetric('90-day Rainfall', formatTrend(indicators?.recent90DayRainfallMm, 'mm', 1))}
+          ${wardMetric('Rainfall Recovery', formatTrend(indicators?.rainfallResponseFt, 'ft'))}
+          ${wardMetric('Water Sensors', formatNumber(indicators?.waterSensorCount || 0))}
+          ${wardMetric('Latest Median Level', formatTrend(indicators?.latestMedianWaterLevelFt, 'ft'))}
+        </section>
+        <section class="ward-explain">
+          <h3>Sensor UIDs in this ward</h3>
+          <div class="uid-list">${uidList}</div>
         </section>
         <section class="ward-explain">
           <h3>Calculation</h3>
           <p><strong>QC confidence</strong> summarizes whether enough ward sensors have reliable readings.</p>
           <p><strong>Groundwater loss</strong> is the fitted change in water level below ground. Positive values mean water is getting deeper, so the ward is dropping.</p>
-          <p><strong>Criticality</strong> combines consumption pressure, monthly groundwater loss, discharge decline, rainfall recovery, and recent CHIRPS rainfall. Depletion score may be 0 when the fitted groundwater trend is flat, improving, or unavailable.</p>
-          <p><strong>Reasons:</strong> ${(criticality?.reasons || []).join(', ') || 'No dominant stress signal or not calculated.'}</p>
+          <p><strong>Rainfall</strong> uses recent CHIRPS rainfall and the estimated post-rainfall water-level recovery where available.</p>
         </section>
       `;
     };
@@ -1182,9 +1151,6 @@ document.querySelectorAll('button[data-ward-mode]').forEach((button) => {
 
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
-    });
-    document.getElementById('downloadCriticalityCsv').addEventListener('click', () => {
-      window.open(`${API_BASE_URL}/api/criticality/wards.csv`, '_blank', 'noopener');
     });
     document.getElementById('downloadGwLossCsv').addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/groundwater-loss/wards.csv`, '_blank', 'noopener');
