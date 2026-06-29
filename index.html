@@ -44,6 +44,14 @@
         </div>
       </section>
 
+      <section class="filter-summary">
+        <div class="stat">
+          <strong id="filteredCount">0</strong>
+          <span>Filtered Borewells</span>
+        </div>
+        <button id="exportFiltered" class="primary" type="button">Export filtered CSV</button>
+      </section>
+
       <section class="stats">
         <div class="stat">
           <strong id="totalCount">0</strong>
@@ -113,14 +121,6 @@
         </div>
       </details>
 
-      <section class="filter-summary">
-        <div class="stat">
-          <strong id="filteredCount">0</strong>
-          <span>Filtered Borewells</span>
-        </div>
-        <button id="exportFiltered" class="primary" type="button">Export filtered CSV</button>
-      </section>
-
       <section id="sensorList" class="list"></section>
     </aside>
 
@@ -157,13 +157,13 @@
           <p>QC combines coverage, physical range checks, stability, and recent reporting. Range checks include valid water/discharge values and Type-B sessions where on level should be greater than off level. Flags show why a sensor may need caution, such as long gaps, spikes, flatlines, missing data, or invalid on/off readings.</p>
         </details>
 
-        <section class="controls" id="sensorExportControls">
+        <section class="controls" id="sensorExportControls" style="display:none">
           <div class="button-row">
             <button id="exportSelected" class="primary" type="button">Export selected CSV</button>
           </div>
         </section>
 
-        <section id="timeRangeSection">
+        <section id="timeRangeSection" style="display:none">
           <h2>Time Range</h2>
           <div class="range-tabs">
             <button class="active" data-range="week">Last Week</button>
@@ -173,7 +173,7 @@
           </div>
         </section>
 
-        <section class="chart-box" id="waterChartBox">
+        <section class="chart-box" id="waterChartBox" style="display:none">
           <div class="chart-head">
             <h2>Water Level Below Surface</h2>
             <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
@@ -182,7 +182,7 @@
           <div id="waterEmpty" class="empty-chart" style="display:none">No water-level data for this borewell and range.</div>
         </section>
 
-        <section class="chart-box" id="dischargeChartBox">
+        <section class="chart-box" id="dischargeChartBox" style="display:none">
           <div class="chart-head">
             <h2>Discharge</h2>
             <button id="downloadDischargeChart" class="chart-download" type="button">Download PNG</button>
