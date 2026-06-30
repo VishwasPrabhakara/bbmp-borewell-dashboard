@@ -302,14 +302,24 @@
     .filter-summary {
       padding: 10px 16px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(120px, auto);
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
     }
 
+    .export-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      min-width: 0;
+    }
+
     .filter-summary button {
-      min-width: 120px;
+      min-width: 0;
+      width: 100%;
+      padding-left: 8px;
+      padding-right: 8px;
     }
 
     .stat {

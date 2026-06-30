@@ -44,14 +44,6 @@
         </div>
       </section>
 
-      <section class="filter-summary">
-        <div class="stat">
-          <strong id="filteredCount">0</strong>
-          <span>Filtered Borewells</span>
-        </div>
-        <button id="exportFiltered" class="primary" type="button">Export filtered CSV</button>
-      </section>
-
       <section class="stats">
         <div class="stat">
           <strong id="totalCount">0</strong>
@@ -88,8 +80,8 @@
             <span>Water-level/discharge availability.</span>
           </div>
           <div>
-            <strong>Ward layer</strong>
-            <span>QC confidence by ward.</span>
+            <strong>Ward boundary</strong>
+            <span>Click a ward to see sensors and groundwater indicators.</span>
           </div>
           <div>
             <strong>QC</strong>
@@ -102,14 +94,6 @@
         </div>
       </details>
 
-      <section class="controls">
-        <h2>Ward Layer</h2>
-        <div class="button-row">
-          <button class="active" data-ward-mode="qc" type="button">QC Confidence</button>
-          <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
-        </div>
-      </section>
-
       <details class="info-panel compact">
         <summary>Categorization</summary>
         <h2>Categorization</h2>
@@ -120,6 +104,17 @@
           <span><i style="background:#6b7280"></i>Unscored: no ward-level QC summary yet</span>
         </div>
       </details>
+
+      <section class="filter-summary">
+        <div class="stat">
+          <strong id="filteredCount">0</strong>
+          <span>Filtered Borewells</span>
+        </div>
+        <div class="export-actions">
+          <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
+          <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
+        </div>
+      </section>
 
       <section id="sensorList" class="list"></section>
     </aside>
@@ -363,14 +358,12 @@
       if (els.wardDetailPanel) els.wardDetailPanel.style.display = visible ? 'none' : '';
     };
     const wardStyle = (feature) => {
-      const confidence = wardQcForProps(feature.properties || {})?.confidence;
-      const color = wardConfidenceColors[confidence] || '#00695c';
       return {
-        color,
-        weight: confidence ? 3 : 2,
-        opacity: 0.95,
-        fillColor: color,
-        fillOpacity: confidence ? 0.24 : 0.12
+        color: '#0f766e',
+        weight: 1.4,
+        opacity: 0.85,
+        fillColor: '#0f766e',
+        fillOpacity: 0.04
       };
     };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
