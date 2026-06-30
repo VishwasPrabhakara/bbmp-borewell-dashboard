@@ -112,6 +112,7 @@
         </div>
         <div class="export-actions">
           <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
+          <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels CSV</button>
         </div>
       </section>
 
@@ -233,6 +234,7 @@
       wardSensorCount: document.getElementById('wardSensorCount'),
       filteredCount: document.getElementById('filteredCount'),
       exportFiltered: document.getElementById('exportFiltered'),
+      downloadWeeklyLevelsCsv: document.getElementById('downloadWeeklyLevelsCsv'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -1145,6 +1147,9 @@
       exportSelectedSensor();
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
+    els.downloadWeeklyLevelsCsv.addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.csv`, '_blank', 'noopener');
+    });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
 
