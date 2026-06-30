@@ -112,7 +112,6 @@
         </div>
         <div class="export-actions">
           <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
-          <button id="downloadGwLossCsv" class="primary" type="button">GW Loss CSV</button>
         </div>
       </section>
 
@@ -1144,9 +1143,6 @@
 
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
-    });
-    document.getElementById('downloadGwLossCsv').addEventListener('click', () => {
-      window.open(`${API_BASE_URL}/api/groundwater-loss/wards.csv`, '_blank', 'noopener');
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
