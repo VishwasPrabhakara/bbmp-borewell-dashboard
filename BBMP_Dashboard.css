@@ -555,6 +555,22 @@
       background: #f2fbf5;
     }
 
+    .ward-note,
+    .uid-note {
+      margin: 0;
+      border: 1px solid #e9cb6f;
+      border-radius: 6px;
+      background: #fff8d8;
+      color: #5f4b00;
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 9px 10px;
+    }
+
+    .uid-note {
+      margin: 0 8px 8px;
+    }
+
     .ward-explain {
       border: 1px solid var(--line);
       border-radius: 6px;
