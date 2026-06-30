@@ -112,7 +112,7 @@
         </div>
         <div class="export-actions">
           <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
-          <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels CSV</button>
+          <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels Excel</button>
         </div>
       </section>
 
@@ -342,6 +342,13 @@
       .replace(/[^a-z0-9]+/g, ' ')
       .trim()
       .replace(/\s+/g, ' ');
+    const wardNumberFromSearch = (query) => {
+      const trimmed = String(query ?? '').trim().toLowerCase();
+      const wardMatch = trimmed.match(/^ward\s*(?:no\.?|number)?\s*(\d+(?:\.0+)?)$/);
+      if (wardMatch) return normalizeWardNo(wardMatch[1]);
+      if (/^\d+(?:\.0+)?$/.test(trimmed)) return normalizeWardNo(trimmed);
+      return '';
+    };
     const wardNumber = (props = {}) => normalizeWardNo(rawWardNumber(props));
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
     const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
@@ -498,12 +505,13 @@
     const filteredSensors = () => {
       const query = els.search.value.trim().toLowerCase();
       const normalizedQuery = normalizeWardName(query);
-      const numericQuery = normalizeWardNo(query);
+      const wardNumberQuery = wardNumberFromSearch(query);
       return sensors.filter((sensor) => {
-        const text = [sensor.uid, sensor.wardNo, sensor.wardName].join(' ').toLowerCase();
-        const wardNumberMatch = query && sensor.wardNo && normalizeWardNo(sensor.wardNo) === numericQuery;
+        const uid = String(sensor.uid || '').toLowerCase();
+        const wardNumberMatch = wardNumberQuery && sensor.wardNo && normalizeWardNo(sensor.wardNo) === wardNumberQuery;
         const wardNameMatch = normalizedQuery && normalizeWardName(sensor.wardName).includes(normalizedQuery);
-        const directMatch = !query || text.includes(query) || wardNumberMatch || wardNameMatch;
+        const uidMatch = query && (uid === query || (query.length >= 5 && uid.includes(query)));
+        const directMatch = !query || wardNumberMatch || wardNameMatch || uidMatch;
         const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
         const qcMatch = !qcFilter || qcStatusForSensor(sensor) === qcFilter;
         return dataMatch && qcMatch && directMatch;
@@ -1148,7 +1156,7 @@
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWeeklyLevelsCsv.addEventListener('click', () => {
-      window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.csv`, '_blank', 'noopener');
+      window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.xls`, '_blank', 'noopener');
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
