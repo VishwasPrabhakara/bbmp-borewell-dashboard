@@ -593,6 +593,54 @@
       padding: 5px 7px;
     }
 
+    .uid-chart-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .uid-chart-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .uid-chart-card summary {
+      min-height: 38px;
+      padding: 9px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      cursor: pointer;
+      font-weight: 800;
+      color: var(--ink);
+    }
+
+    .uid-chart-card summary small {
+      color: var(--muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .mini-chart-wrap {
+      height: 210px;
+      min-width: 0;
+      padding: 8px;
+    }
+
+    .mini-chart-wrap.large {
+      height: 250px;
+      padding: 0;
+    }
+
+    .mini-chart-wrap canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+
     .detail-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;

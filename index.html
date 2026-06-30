@@ -212,6 +212,8 @@
     let wardQcByNo = new Map();
     let wardQcByName = new Map();
     let wardIndicatorsByName = new Map();
+    let wardWeeklyByNo = new Map();
+    let consumptionByWardName = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -219,6 +221,7 @@
     let waterPoints = [];
     let waterChart = null;
     let dischargeChart = null;
+    let wardInlineCharts = [];
 
     const els = {
       refreshStatus: document.getElementById('refreshStatus'),
@@ -353,6 +356,8 @@
     const wardName = (props = {}) => props.WARD_NAME || props.ward_name || props.name || props.NAME || 'Unknown ward';
     const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
     const wardIndicatorsForProps = (props = {}) => wardIndicatorsByNo.get(wardNumber(props)) || wardIndicatorsByName.get(normalizeWardName(wardName(props)));
+    const wardWeeklyForProps = (props = {}) => wardWeeklyByNo.get(wardNumber(props));
+    const consumptionForProps = (props = {}) => consumptionByWardName.get(normalizeWardName(wardName(props)));
     const setSensorSectionsVisible = (visible) => {
       [
         els.sensorDetailGrid,
@@ -366,12 +371,15 @@
       if (els.wardDetailPanel) els.wardDetailPanel.style.display = visible ? 'none' : '';
     };
     const wardStyle = (feature) => {
+      const weekly = wardWeeklyForProps(feature.properties || {});
+      const drop = Number(weekly?.avgDropPerDay);
+      const color = Number.isFinite(drop) ? (drop > 0 ? '#d64545' : drop < 0 ? '#0f8f4d' : '#6b7280') : '#0f766e';
       return {
-        color: '#0f766e',
-        weight: 1.4,
+        color,
+        weight: Number.isFinite(drop) ? 2 : 1.3,
         opacity: 0.85,
-        fillColor: '#0f766e',
-        fillOpacity: 0.04
+        fillColor: color,
+        fillOpacity: Number.isFinite(drop) ? 0.12 : 0.04
       };
     };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
@@ -427,16 +435,13 @@
       const props = feature.properties || {};
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
-      const wardQc = wardQcForProps(props);
-      const indicators = wardIndicatorsForProps(props);
+      const weekly = wardWeeklyForProps(props);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
-        <div><strong>QC:</strong> ${wardQc?.confidence || 'Not scored'}</div>
-        <div><strong>Monthly GW loss:</strong> ${formatTrend(indicators?.waterLevelTrendFtPerMonth, 'ft/month')}</div>
-        <div><strong>Weekly GW loss:</strong> ${formatTrend(indicators?.waterLevelTrendFtPerWeek, 'ft/week')}</div>
-        <div><strong>90-day rainfall:</strong> ${formatTrend(indicators?.recent90DayRainfallMm, 'mm', 1)}</div>
+        <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
+        <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 4)}</div>
         <div class="popup-hint">Click ward for full details.</div>
       `;
     };
@@ -739,11 +744,13 @@
     };
 
     const loadSensors = async () => {
-      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse] = await Promise.all([
+      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors`),
         fetch(`${API_BASE_URL}/api/qc/sensors`),
         fetch(`${API_BASE_URL}/api/qc/wards`),
-        fetch(`${API_BASE_URL}/api/indicators/wards`)
+        fetch(`${API_BASE_URL}/api/indicators/wards`),
+        fetch(`${API_BASE_URL}/api/ward-weekly-levels`),
+        fetch(`${API_BASE_URL}/api/consumption/wards`)
       ]);
       if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await sensorResponse.json();
@@ -759,11 +766,21 @@
       if (indicatorsResponse.ok) {
         indicatorsPayload = await indicatorsResponse.json();
       }
+      let wardWeeklyPayload = { wards: [] };
+      if (wardWeeklyResponse.ok) {
+        wardWeeklyPayload = await wardWeeklyResponse.json();
+      }
+      let consumptionPayload = { wards: [] };
+      if (consumptionResponse.ok) {
+        consumptionPayload = await consumptionResponse.json();
+      }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      consumptionByWardName = new Map((consumptionPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1042,26 +1059,164 @@
         <strong>${value}</strong>
       </div>
     `;
+    const formatConsumption = (value) => value == null ? '-' : `${formatNumber(value, 1)} ML`;
+    const formatConnections = (value) => value == null ? '-' : formatNumber(value);
 
-    const selectWard = (feature) => {
+    const clearWardInlineCharts = () => {
+      wardInlineCharts.forEach((chart) => chart.destroy());
+      wardInlineCharts = [];
+    };
+
+    const renderWardLineChart = (canvas, labels, datasets) => {
+      const chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: datasets.map((dataset) => ({
+            ...dataset,
+            backgroundColor: dataset.borderColor + '22',
+            borderWidth: dataset.borderWidth ?? 2,
+            borderDash: dataset.borderDash ?? [4, 4],
+            pointRadius: dataset.pointRadius ?? 2,
+            pointHoverRadius: 4,
+            tension: 0,
+            spanGaps: false
+          }))
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+            y: {
+              reverse: true,
+              title: { display: true, text: 'Feet below surface' }
+            }
+          },
+          plugins: {
+            legend: { display: true },
+            tooltip: {
+              callbacks: {
+                label(context) {
+                  const value = context.parsed.y;
+                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(2)} ft` : `${context.dataset.label}: N/A`;
+                }
+              }
+            }
+          }
+        }
+      });
+      wardInlineCharts.push(chart);
+      return chart;
+    };
+
+    const buildWardDetailHtml = (props, wardData, localWardSensors) => {
+      const count = props._sensorCount || 0;
+      const goodSensors = wardData?.goodSensors || localWardSensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length;
+      const notUsable = Math.max(count - goodSensors, 0);
+      const goodPercent = count ? `${formatNumber((goodSensors / count) * 100, 1)}%` : '-';
+      const drop = wardData?.avgDropPerDay;
+      const dropClass = Number(drop) > 0 ? 'bad' : Number(drop) < 0 ? 'good' : '';
+      const consumption = consumptionForProps(props);
+      const goodUids = (wardData?.sensors || [])
+        .map((sensor) => sensor.uid)
+        .filter(Boolean);
+      const uidList = goodUids.length
+        ? goodUids.map((uid) => `<span>${uid}</span>`).join('')
+        : '<span>No GOOD sensor weekly data</span>';
+      const sensorPanels = (wardData?.sensors || []).map((sensor, index) => `
+        <details class="uid-chart-card">
+          <summary>
+            <span>${sensor.uid}</span>
+            <small>${formatTrend(sensor.dropPerDay, 'ft/day', 4)}</small>
+          </summary>
+          <div class="mini-chart-wrap">
+            <canvas id="uidWeeklyChart${index}"></canvas>
+          </div>
+        </details>
+      `).join('');
+
+      return `
+        <section class="ward-summary-grid">
+          ${wardMetric('Total Sensors', formatNumber(count))}
+          ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
+          ${wardMetric('Not Usable', formatNumber(notUsable))}
+          ${wardMetric('GOOD Sensor %', goodPercent)}
+          ${wardMetric('Avg Drop/day', formatTrend(drop, 'ft/day', 4), dropClass)}
+          ${wardMetric('2025 Consumption', formatConsumption(consumption?.consumption2025Ml))}
+          ${wardMetric('2026 Consumption', formatConsumption(consumption?.consumption2026Ml))}
+          ${wardMetric('2025 Connections', formatConnections(consumption?.connections2025))}
+          ${wardMetric('2026 Connections', formatConnections(consumption?.connections2026))}
+          ${wardMetric('2025 Cons/Conn', formatConsumption(consumption?.consumptionPerConnection2025))}
+          ${wardMetric('2026 Cons/Conn', formatConsumption(consumption?.consumptionPerConnection2026))}
+        </section>
+        <section class="ward-explain">
+          <h3>Ward Weekly Groundwater Trend</h3>
+          <div class="mini-chart-wrap large">
+            <canvas id="wardWeeklyChart"></canvas>
+          </div>
+        </section>
+        <section class="ward-explain">
+          <h3>GOOD Sensor UIDs</h3>
+          <div class="uid-list">${uidList}</div>
+        </section>
+        <section class="ward-explain">
+          <h3>UID Weekly Plots</h3>
+          <p>Each UID is collapsed by default. Open a UID to see Week 1-4 levels from Jan 2026 onward.</p>
+          <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
+        </section>
+      `;
+    };
+
+    const renderWardDetailCharts = (wardData) => {
+      clearWardInlineCharts();
+      if (!wardData) return;
+      const labels = (wardData.weekly || []).map((point) => point.label);
+      const wardCanvas = document.getElementById('wardWeeklyChart');
+      if (wardCanvas) {
+        renderWardLineChart(wardCanvas, labels, [
+          {
+            label: 'Average level',
+            data: (wardData.weekly || []).map((point) => point.averageLevel),
+            borderColor: '#244e9a'
+          },
+          {
+            label: 'Median level',
+            data: (wardData.weekly || []).map((point) => point.medianLevel),
+            borderColor: '#0f8f4d'
+          }
+        ]);
+      }
+
+      (wardData.sensors || []).forEach((sensor, index) => {
+        const canvas = document.getElementById(`uidWeeklyChart${index}`);
+        if (!canvas) return;
+        renderWardLineChart(canvas, labels, [
+          {
+            label: sensor.uid,
+            data: (sensor.points || []).map((point) => point.level),
+            borderColor: '#d97706'
+          }
+        ]);
+      });
+
+      document.querySelectorAll('.uid-chart-card').forEach((details) => {
+        details.addEventListener('toggle', () => {
+          if (details.open) {
+            window.setTimeout(() => wardInlineCharts.forEach((chart) => chart.resize()), 80);
+          }
+        });
+      });
+    };
+
+    const selectWard = async (feature) => {
       const props = feature.properties || {};
       const count = props._sensorCount || 0;
-      const withData = props._sensorWithDataCount || 0;
-      const withoutData = props._sensorWithoutDataCount || 0;
-      const coverage = count ? `${formatNumber((withData / count) * 100, 1)}%` : '-';
-      const wardQc = wardQcForProps(props);
-      const indicators = wardIndicatorsForProps(props);
-      const monthlyLoss = indicators?.waterLevelTrendFtPerMonth;
-      const weeklyLoss = indicators?.waterLevelTrendFtPerWeek;
-      const lossClass = Number(monthlyLoss) > 0 ? 'bad' : Number(monthlyLoss) < 0 ? 'good' : '';
       const selectedWardNo = wardNumber(props);
       const selectedWardName = normalizeWardName(wardName(props));
       const wardSensors = sensors
         .filter((sensor) => normalizeWardNo(sensor.wardNo) === selectedWardNo || normalizeWardName(sensor.wardName) === selectedWardName)
         .sort((a, b) => String(a.uid).localeCompare(String(b.uid)));
-      const uidList = wardSensors.length
-        ? wardSensors.map((sensor) => `<span>${sensor.uid}</span>`).join('')
-        : '<span>No matched sensor UIDs</span>';
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide');
@@ -1070,39 +1225,28 @@
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
       selectedSensor = null;
       waterPoints = [];
+      clearWardInlineCharts();
       waterChart?.destroy();
       dischargeChart?.destroy();
       waterChart = null;
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = 'Ward summary from sensor QC and groundwater trend indicators.';
-      els.wardDetailPanel.innerHTML = `
-        <section class="ward-summary-grid">
-          ${wardMetric('Sensors', formatNumber(count))}
-          ${wardMetric('With Data', formatNumber(withData))}
-          ${wardMetric('No Data', formatNumber(withoutData))}
-          ${wardMetric('Coverage', coverage)}
-          ${wardMetric('QC Confidence', wardQc?.confidence || 'Not scored')}
-          ${wardMetric('Avg QC Score', wardQc ? formatScore(wardQc.avgQcScore) : '-')}
-          ${wardMetric('Monthly GW Loss', formatTrend(monthlyLoss, 'ft/month'), lossClass)}
-          ${wardMetric('Weekly GW Loss', formatTrend(weeklyLoss, 'ft/week'), Number(weeklyLoss) > 0 ? 'bad' : Number(weeklyLoss) < 0 ? 'good' : '')}
-          ${wardMetric('90-day Rainfall', formatTrend(indicators?.recent90DayRainfallMm, 'mm', 1))}
-          ${wardMetric('Rainfall Recovery', formatTrend(indicators?.rainfallResponseFt, 'ft'))}
-          ${wardMetric('Water Sensors', formatNumber(indicators?.waterSensorCount || 0))}
-          ${wardMetric('Latest Median Level', formatTrend(indicators?.latestMedianWaterLevelFt, 'ft'))}
-        </section>
-        <section class="ward-explain">
-          <h3>Sensor UIDs in this ward</h3>
-          <div class="uid-list">${uidList}</div>
-        </section>
-        <section class="ward-explain">
-          <h3>Calculation</h3>
-          <p><strong>QC confidence</strong> summarizes whether enough ward sensors have reliable readings.</p>
-          <p><strong>Groundwater loss</strong> is the fitted change in water level below ground. Positive values mean water is getting deeper, so the ward is dropping.</p>
-          <p><strong>Rainfall</strong> uses recent CHIRPS rainfall and the estimated post-rainfall water-level recovery where available.</p>
-        </section>
-      `;
+      els.detailSubhead.textContent = 'GOOD sensor weekly levels from Jan 2026 onward.';
+      els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}`);
+        const payload = response.ok ? await response.json() : { ward: null };
+        const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors);
+        renderWardDetailCharts(wardData);
+      } catch (error) {
+        const wardData = wardWeeklyByNo.get(selectedWardNo) || null;
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors);
+        renderWardDetailCharts(wardData);
+        showToast(`Could not load ward weekly data for ward ${selectedWardNo}.`);
+      }
     };
 
     const legend = L.control({ position: 'topright' });
@@ -1156,7 +1300,7 @@
     });
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWeeklyLevelsCsv.addEventListener('click', () => {
-      window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.xls`, '_blank', 'noopener');
+      window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.xlsx`, '_blank', 'noopener');
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
