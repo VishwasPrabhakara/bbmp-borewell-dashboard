@@ -1318,8 +1318,7 @@
 
     const buildWardDetailHtml = (props, wardData, localWardSensors) => {
       const count = props._sensorCount || 0;
-      const goodSensors = wardData?.goodSensors || localWardSensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length;
-      const plottedGoodSensors = wardData?.plottedGoodSensorCount ?? (wardData?.sensors || []).length;
+      const goodSensors = wardData ? (wardData.goodSensors || 0) : localWardSensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length;
       const omittedGoodUids = wardData?.noWeeklyDataUids || [];
       const notUsable = Math.max(count - goodSensors, 0);
       const goodPercent = count ? `${formatNumber((goodSensors / count) * 100, 1)}%` : '-';
@@ -1355,14 +1354,13 @@
         </details>
       `).join('');
       const omittedNote = omittedGoodUids.length
-        ? `<div class="ward-note">${omittedGoodUids.length} GOOD QC sensor(s) are not plotted because they have no valid weekly groundwater levels after removing zero readings and outliers: ${omittedGoodUids.join(', ')}</div>`
+        ? `<div class="ward-note">${omittedGoodUids.length} sensor(s) passed QC but are excluded from GOOD Sensors because they have no valid cleaned groundwater levels to plot after removing zero readings and outliers: ${omittedGoodUids.join(', ')}</div>`
         : '';
 
       return `
         <section class="ward-summary-grid">
           ${wardMetric('Total Sensors', formatNumber(count))}
           ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
-          ${wardMetric('Plotted GOOD UIDs', `${formatNumber(plottedGoodSensors)} / ${formatNumber(goodSensors)}`)}
           ${wardMetric('Not Usable', formatNumber(notUsable))}
           ${wardMetric('GOOD Sensor %', goodPercent)}
           ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
@@ -1379,7 +1377,7 @@
         </section>
         <section class="ward-explain">
           <h3>GOOD Sensor UIDs</h3>
-          <p class="ward-table-note">All GOOD QC sensors are listed. Some may not plot if valid levels are not available after cleaning.</p>
+          <p class="ward-table-note">Only QC-good sensors with valid cleaned groundwater levels are listed here. QC-good sensors without plot-ready data are counted under Not Usable for this analysis.</p>
           <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
         </section>
       `;
