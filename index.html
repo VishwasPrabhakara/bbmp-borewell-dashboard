@@ -216,6 +216,7 @@
     let wardWeeklyByNo = new Map();
     let consumptionByWardName = new Map();
     let consumptionByCanonicalName = new Map();
+    let consumptionRows = [];
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -379,9 +380,19 @@
     const consumptionForProps = (props = {}) => {
       const normalized = normalizeWardName(wardName(props));
       const canonical = canonicalWardName(wardName(props));
-      return consumptionByWardName.get(normalized)
-        || consumptionByCanonicalName.get(canonical)
-        || null;
+      const exact = consumptionByWardName.get(normalized) || consumptionByCanonicalName.get(canonical);
+      if (exact) return exact;
+      const fuzzy = consumptionRows.find((item) => {
+        const itemName = canonicalWardName(item.wardName);
+        return itemName && canonical && (itemName.includes(canonical) || canonical.includes(itemName));
+      });
+      if (fuzzy) return fuzzy;
+      const wardTokens = new Set(normalized.split(' ').filter((token) => token.length > 2 && token !== 'ward'));
+      return consumptionRows.find((item) => {
+        const itemTokens = normalizeWardName(item.wardName).split(' ').filter((token) => token.length > 2 && token !== 'ward');
+        const overlap = itemTokens.filter((token) => wardTokens.has(token)).length;
+        return overlap >= Math.min(2, Math.max(1, wardTokens.size));
+      }) || null;
     };
     const setSensorSectionsVisible = (visible) => {
       [
@@ -397,14 +408,16 @@
     };
     const wardStyle = (feature) => {
       const props = feature.properties || {};
-      const drop = Number(props._avgDropPerDay ?? wardWeeklyForProps(props)?.avgDropPerDay);
-      const color = Number.isFinite(drop) ? (drop > 0 ? '#7f0000' : drop < 0 ? '#004d1a' : '#30343b') : '#0f766e';
+      const rawDrop = props._avgDropPerDay ?? wardWeeklyForProps(props)?.avgDropPerDay;
+      const drop = rawDrop === null || rawDrop === undefined || rawDrop === '' ? null : Number(rawDrop);
+      const hasDrop = Number.isFinite(drop);
+      const color = hasDrop ? (drop > 0 ? '#7f0000' : drop < 0 ? '#004d1a' : '#30343b') : '#0f766e';
       return {
         color,
-        weight: Number.isFinite(drop) ? 1 : 1.3,
-        opacity: Number.isFinite(drop) ? 1 : 0.85,
+        weight: hasDrop ? 1 : 1.3,
+        opacity: hasDrop ? 1 : 0.85,
         fillColor: color,
-        fillOpacity: Number.isFinite(drop) ? 0.9 : 0.04
+        fillOpacity: hasDrop ? 0.9 : 0.04
       };
     };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
@@ -466,7 +479,7 @@
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
-        <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 4)}</div>
+        <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
         <div class="popup-hint">Click ward for full details.</div>
       `;
     };
@@ -808,8 +821,9 @@
       wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      consumptionByWardName = new Map((consumptionPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      consumptionByCanonicalName = new Map((consumptionPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
+      consumptionRows = consumptionPayload.wards || [];
+      consumptionByWardName = new Map(consumptionRows.map((item) => [normalizeWardName(item.wardName), item]));
+      consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1178,7 +1192,7 @@
         <details class="uid-chart-card">
           <summary>
             <span>${sensor.uid}</span>
-            <small>${formatTrend(sensor.dropPerDay, 'ft/day', 4)}</small>
+            <small>${formatTrend(sensor.dropPerDay, 'ft/day', 2)}</small>
           </summary>
           ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two weekly values to compare.</p>' : ''}
           <div class="mini-chart-wrap">
@@ -1193,7 +1207,7 @@
           ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
           ${wardMetric('Not Usable', formatNumber(notUsable))}
           ${wardMetric('GOOD Sensor %', goodPercent)}
-          ${wardMetric('Avg Drop/day', formatTrend(drop, 'ft/day', 4), dropClass)}
+          ${wardMetric('Avg Drop/day', formatTrend(drop, 'ft/day', 2), dropClass)}
           ${wardMetric('2025 Consumption', formatConsumption(consumption?.consumption2025Ml))}
           ${wardMetric('2026 Consumption', formatConsumption(consumption?.consumption2026Ml))}
           ${wardMetric('2025 Connections', formatConnections(consumption?.connections2025))}
