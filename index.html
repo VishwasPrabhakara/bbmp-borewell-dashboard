@@ -419,6 +419,7 @@
         avg: weekly?.avgDropPerDay ?? null,
         median: weekly?.medianDropPerDay ?? null,
         max: weekly?.maxDropPerDay ?? null,
+        sensorCount: Number(weekly?.dropSensorCount || 0),
         allPositive: Boolean(weekly?.dropAllPositive)
       };
     };
@@ -432,17 +433,15 @@
     const wardStyle = (feature) => {
       const props = feature.properties || {};
       const stats = dropStatsForProps(props);
-      const values = [stats.avg, stats.median, stats.max].map(Number);
-      const hasDrop = values.every((value) => Number.isFinite(value));
+      const avgDrop = Number(stats.avg);
+      const hasDrop = Number.isFinite(avgDrop);
       if (!hasDrop) {
         return neutralWardStyle();
       }
-      const allPositive = values.every((value) => value > 0);
-      const allNegative = values.every((value) => value < 0);
-      if (!allPositive && !allNegative) {
+      if (avgDrop === 0) {
         return neutralWardStyle();
       }
-      const color = allPositive ? '#7f0000' : '#004d1a';
+      const color = avgDrop > 0 ? '#7f0000' : '#004d1a';
       return {
         color,
         weight: 1,
@@ -505,15 +504,12 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const weekly = wardWeeklyForProps(props);
-      const stats = dropStatsForProps(props);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
-        <div><strong>Avg drop/day:</strong> ${formatTrend(stats.avg, 'ft/day', 2)}</div>
-        <div><strong>Median drop/day:</strong> ${formatTrend(stats.median, 'ft/day', 2)}</div>
-        <div><strong>Max drop/day:</strong> ${formatTrend(stats.max, 'ft/day', 2)}</div>
+        <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
         <div class="popup-hint">Click ward for full details.</div>
       `;
     };
