@@ -31,20 +31,20 @@
       height: 100vh;
       min-height: 720px;
       display: grid;
-      grid-template-columns: minmax(340px, 360px) minmax(500px, 1fr) minmax(360px, 380px);
+      grid-template-columns: minmax(320px, 340px) minmax(420px, 1fr) minmax(560px, 620px);
       transition: grid-template-columns 0.2s ease;
     }
 
     .app.chart-wide {
-      grid-template-columns: minmax(320px, 340px) minmax(520px, 1fr) minmax(420px, 500px);
+      grid-template-columns: minmax(300px, 320px) minmax(420px, 1fr) minmax(620px, 700px);
     }
 
     .app.left-collapsed {
-      grid-template-columns: 0 1fr minmax(360px, 420px);
+      grid-template-columns: 0 minmax(420px, 1fr) minmax(560px, 640px);
     }
 
     .app.left-collapsed.chart-wide {
-      grid-template-columns: 0 minmax(520px, 1fr) minmax(420px, 520px);
+      grid-template-columns: 0 minmax(420px, 1fr) minmax(620px, 720px);
     }
 
     .app.right-collapsed {
@@ -99,11 +99,11 @@
     }
 
     #toggleRight {
-      right: 394px;
+      right: 634px;
     }
 
     .app.chart-wide #toggleRight {
-      right: 514px;
+      right: 714px;
     }
 
     .app.left-collapsed #toggleLeft {
@@ -593,13 +593,13 @@
 
     .ward-table-scroll {
       width: 100%;
-      overflow-x: auto;
+      overflow-x: visible;
       padding-bottom: 2px;
     }
 
     .ward-consumption-table {
-      width: max-content;
-      min-width: 720px;
+      width: 100%;
+      min-width: 0;
       border-collapse: collapse;
       table-layout: auto;
       background: #fff;
