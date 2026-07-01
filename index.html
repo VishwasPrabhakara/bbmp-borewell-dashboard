@@ -908,13 +908,14 @@
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
       canvas.style.width = '100%';
+      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
       return new Chart(document.getElementById(canvasId), {
         type: 'line',
         data: {
           labels,
           datasets: [{
             label,
-            data: values,
+            data: values.map(chartValue),
             borderColor: color,
             backgroundColor: color + '22',
             borderWidth: 2,
@@ -927,7 +928,7 @@
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+            x: { ticks: { minRotation: 90, maxRotation: 90, autoSkip: true, maxTicksLimit: 12 } },
             y: { reverse: !!options.reverseY, title: { display: true, text: options.yTitle || '' } }
           },
           plugins: {
@@ -938,7 +939,7 @@
                   const value = context.parsed.y;
                   if (value === null || value === undefined) return `${context.dataset.label}: N/A`;
                   const unit = options.unit ? ` ${options.unit}` : '';
-                  return `${context.dataset.label}: ${value.toFixed(1)}${unit}`;
+                  return `${context.dataset.label}: ${value.toFixed(2)}${unit}`;
                 }
               }
             }
@@ -951,12 +952,14 @@
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
       canvas.style.width = '100%';
+      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
       return new Chart(document.getElementById(canvasId), {
         type: 'line',
         data: {
           labels,
           datasets: datasets.map((dataset) => ({
             ...dataset,
+            data: (dataset.data || []).map(chartValue),
             backgroundColor: dataset.borderColor + '22',
             borderWidth: dataset.borderWidth ?? 2,
             pointRadius: dataset.pointRadius ?? 2,
@@ -971,9 +974,10 @@
           scales: {
             x: {
               ticks: {
-                maxRotation: 0,
+                minRotation: 90,
+                maxRotation: 90,
                 autoSkip: true,
-                maxTicksLimit: 6
+                maxTicksLimit: 12
               }
             },
             y: {
@@ -997,7 +1001,7 @@
                     return `${context.dataset.label}: N/A`;
                   }
 
-                  return `${context.dataset.label}: ${value.toFixed(1)} ft`;
+                  return `${context.dataset.label}: ${value.toFixed(2)} ft`;
                 }
               }
             }
@@ -1335,12 +1339,14 @@
     };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
+      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
       const chart = new Chart(canvas, {
         type: 'line',
         data: {
           labels,
           datasets: datasets.map((dataset) => ({
             ...dataset,
+            data: (dataset.data || []).map(chartValue),
             backgroundColor: dataset.borderColor + '22',
             borderWidth: dataset.borderWidth ?? 2,
             borderDash: dataset.borderDash ?? [],
@@ -1357,7 +1363,8 @@
           scales: {
             x: {
               ticks: {
-                maxRotation: 0,
+                minRotation: 90,
+                maxRotation: 90,
                 autoSkip: false,
                 callback(value) {
                   return monthAxisLabel(this.getLabelForValue(value));
@@ -1387,7 +1394,7 @@
                 label(context) {
                   const value = context.parsed.y;
                   const unit = context.dataset.unit || options.unit || 'ft';
-                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(3)} ${unit}` : `${context.dataset.label}: N/A`;
+                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(2)} ${unit}` : `${context.dataset.label}: N/A`;
                 }
               }
             }
