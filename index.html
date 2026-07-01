@@ -71,40 +71,6 @@
         </div>
       </section>
 
-      <details class="info-panel">
-        <summary>How to read this</summary>
-        <h2>How to read this</h2>
-        <div class="info-grid">
-          <div>
-            <strong>Sensor dots</strong>
-            <span>Water-level/discharge availability.</span>
-          </div>
-          <div>
-            <strong>Ward boundary</strong>
-            <span>Click a ward to see sensors and groundwater indicators.</span>
-          </div>
-          <div>
-            <strong>QC</strong>
-            <span>Sensor reliability score.</span>
-          </div>
-          <div>
-            <strong>GW loss</strong>
-            <span>Positive weekly/monthly values mean groundwater is dropping.</span>
-          </div>
-        </div>
-      </details>
-
-      <details class="info-panel compact">
-        <summary>Categorization</summary>
-        <h2>Categorization</h2>
-        <div class="status-guide">
-          <span><i style="background:#0f8f4d"></i>High QC: enough reliable sensors</span>
-          <span><i style="background:#f2a900"></i>Medium QC: usable with caution</span>
-          <span><i style="background:#d64545"></i>Low QC: weak sensor evidence</span>
-          <span><i style="background:#6b7280"></i>Unscored: no ward-level QC summary yet</span>
-        </div>
-      </details>
-
       <section class="filter-summary">
         <div class="stat">
           <strong id="filteredCount">0</strong>
@@ -147,11 +113,6 @@
           <div class="detail"><span>QC Score</span><strong id="detailQcScore">-</strong></div>
           <div class="detail detail-wide"><span>QC Flags</span><strong id="detailQcFlags">-</strong></div>
         </section>
-
-        <details class="qc-note">
-          <summary>QC score method</summary>
-          <p>QC combines coverage, physical range checks, stability, and recent reporting. Range checks include valid water/discharge values and Type-B sessions where on level should be greater than off level. Flags show why a sensor may need caution, such as long gaps, spikes, flatlines, missing data, or invalid on/off readings.</p>
-        </details>
 
         <section class="controls" id="sensorExportControls" style="display:none">
           <div class="button-row">
@@ -1202,7 +1163,7 @@
       }));
       const rowHtml = rows.map((row) => {
         const population = wardPopulation(props, row.year, consumption);
-        const daysCovered = Number(row.months) > 0 ? Number(row.months) * 30.4375 : null;
+        const daysCovered = Number(row.months) === 12 ? 365 : Number(row.months) > 0 ? Number(row.months) * 30.4375 : null;
         const lpcd = Number.isFinite(Number(row.consumption)) && Number.isFinite(population) && population > 0 && daysCovered
           ? (Number(row.consumption) * 1000000) / population / daysCovered
           : null;
@@ -1231,7 +1192,7 @@
                   <th>Connections</th>
                   <th>Cons/Conn</th>
                   <th>Population</th>
-                  <th>Est. LPCD</th>
+                  <th>LPCD</th>
                 </tr>
               </thead>
               <tbody>${rowHtml}</tbody>
@@ -1249,12 +1210,12 @@
 
     const monthAxisLabel = (label) => {
       const text = String(label || '');
-      const match = text.match(/^([A-Za-z]{3})(?:-\d{2})?\s+W(\d)$/);
+      const match = text.match(/^([A-Za-z]{3})(?:-\d{2})?\s+W(\d)$/i);
       if (!match) return text;
-      return match[2] === '1' ? match[1] : '';
+      return `${match[1]} W${match[2]}`;
     };
 
-    const renderWardLineChart = (canvas, labels, datasets) => {
+    const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const chart = new Chart(canvas, {
         type: 'line',
         data: {
@@ -1263,9 +1224,10 @@
             ...dataset,
             backgroundColor: dataset.borderColor + '22',
             borderWidth: dataset.borderWidth ?? 2,
-            borderDash: dataset.borderDash ?? [4, 4],
-            pointRadius: dataset.pointRadius ?? 2,
+            borderDash: dataset.borderDash ?? [],
+            pointRadius: dataset.pointRadius ?? 3,
             pointHoverRadius: 4,
+            showLine: dataset.showLine ?? options.showLine ?? true,
             tension: 0,
             spanGaps: false
           }))
@@ -1284,10 +1246,18 @@
               }
             },
             y: {
-              reverse: true,
-              title: { display: true, text: 'Feet below surface' }
-            }
+              reverse: options.reverseY ?? true,
+              title: { display: true, text: options.yTitle || 'Feet below surface' }
+            },
+            ...(options.secondAxis ? {
+              y1: {
+                position: 'right',
+                grid: { drawOnChartArea: false },
+                title: { display: true, text: options.secondAxis }
+              }
+            } : {})
           },
+          interaction: { mode: 'nearest', intersect: false },
           plugins: {
             legend: { display: true },
             tooltip: {
@@ -1297,7 +1267,8 @@
                 },
                 label(context) {
                   const value = context.parsed.y;
-                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(2)} ft` : `${context.dataset.label}: N/A`;
+                  const unit = context.dataset.unit || options.unit || 'ft';
+                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(3)} ${unit}` : `${context.dataset.label}: N/A`;
                 }
               }
             }
@@ -1318,16 +1289,9 @@
       const maxDrop = wardData?.maxDropPerDay;
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = allDropStatsPositive ? 'bad' : [avgDrop, medianDrop, maxDrop].some((value) => Number.isFinite(Number(value))) ? 'good' : '';
-      const consumption = consumptionForProps(props);
       const dropNote = goodSensors > 0 && avgDrop == null && medianDrop == null && maxDrop == null
         ? '<div class="ward-note">Drop/day is blank because the GOOD sensors in this ward do not have at least two successive weekly values to compare.</div>'
         : '';
-      const goodUids = (wardData?.sensors || [])
-        .map((sensor) => sensor.uid)
-        .filter(Boolean);
-      const uidList = goodUids.length
-        ? goodUids.map((uid) => `<span>${uid}</span>`).join('')
-        : '<span>No GOOD sensor weekly data</span>';
       const sensorPanels = (wardData?.sensors || []).map((sensor, index) => `
         <details class="uid-chart-card">
           <summary>
@@ -1335,8 +1299,23 @@
             <small>${formatTrend(sensor.dropPerDay, 'ft/day', 2)}</small>
           </summary>
           ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two weekly values to compare.</p>' : ''}
-          <div class="mini-chart-wrap">
-            <canvas id="uidWeeklyChart${index}"></canvas>
+          <div class="uid-plot-stack">
+            <details open>
+              <summary>Daily ON/OFF levels</summary>
+              <div class="mini-chart-wrap"><canvas id="uidDailyLevelChart${index}"></canvas></div>
+            </details>
+            <details>
+              <summary>Weekly level points</summary>
+              <div class="mini-chart-wrap"><canvas id="uidWeeklyChart${index}"></canvas></div>
+            </details>
+            <details>
+              <summary>Daily drawdown rate</summary>
+              <div class="mini-chart-wrap"><canvas id="uidDailyDropChart${index}"></canvas></div>
+            </details>
+            <details>
+              <summary>Weekly drop rate</summary>
+              <div class="mini-chart-wrap"><canvas id="uidWeeklyDropChart${index}"></canvas></div>
+            </details>
           </div>
         </details>
       `).join('');
@@ -1352,7 +1331,6 @@
           ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
         </section>
         ${dropNote}
-        ${consumptionTableHtml(props, consumption)}
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           <div class="mini-chart-wrap large">
@@ -1361,11 +1339,6 @@
         </section>
         <section class="ward-explain">
           <h3>GOOD Sensor UIDs</h3>
-          <div class="uid-list">${uidList}</div>
-        </section>
-        <section class="ward-explain">
-          <h3>UID Weekly Plots</h3>
-          <p>Each UID is collapsed by default. Open a UID to see Week 1-4 levels from Jan 2026 onward.</p>
           <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
         </section>
       `;
@@ -1381,26 +1354,95 @@
           {
             label: 'Average level',
             data: (wardData.weekly || []).map((point) => point.averageLevel),
-            borderColor: '#244e9a'
+            borderColor: '#244e9a',
+            showLine: false
           },
           {
             label: 'Median level',
             data: (wardData.weekly || []).map((point) => point.medianLevel),
-            borderColor: '#0f8f4d'
+            borderColor: '#0f8f4d',
+            showLine: false
           }
-        ]);
+        ], { showLine: false });
       }
 
       (wardData.sensors || []).forEach((sensor, index) => {
-        const canvas = document.getElementById(`uidWeeklyChart${index}`);
-        if (!canvas) return;
-        renderWardLineChart(canvas, labels, [
-          {
-            label: sensor.uid,
-            data: (sensor.points || []).map((point) => point.level),
-            borderColor: '#d97706'
-          }
-        ]);
+        const dailyLevelCanvas = document.getElementById(`uidDailyLevelChart${index}`);
+        if (dailyLevelCanvas) {
+          const daily = sensor.dailyLevels || [];
+          renderWardLineChart(dailyLevelCanvas, daily.map((point) => point.label), [
+            {
+              label: 'Water level',
+              data: daily.map((point) => point.onLevel == null && point.offLevel == null ? point.primaryLevel : null),
+              borderColor: '#111827',
+              unit: 'ft'
+            },
+            {
+              label: 'Off level',
+              data: daily.map((point) => point.offLevel),
+              borderColor: '#244e9a',
+              unit: 'ft'
+            },
+            {
+              label: 'On level',
+              data: daily.map((point) => point.onLevel),
+              borderColor: '#0f8f4d',
+              unit: 'ft'
+            }
+          ], { yTitle: 'Feet below surface', unit: 'ft' });
+        }
+
+        const weeklyCanvas = document.getElementById(`uidWeeklyChart${index}`);
+        if (weeklyCanvas) {
+          renderWardLineChart(weeklyCanvas, (sensor.points || []).map((point) => point.label), [
+            {
+              label: sensor.uid,
+              data: (sensor.points || []).map((point) => point.level),
+              borderColor: '#d97706',
+              showLine: false,
+              unit: 'ft'
+            }
+          ], { showLine: false, yTitle: 'Feet below surface', unit: 'ft' });
+        }
+
+        const dailyDropCanvas = document.getElementById(`uidDailyDropChart${index}`);
+        if (dailyDropCanvas) {
+          const sessionDrops = sensor.sessionDrawdowns || [];
+          const fallbackDrops = sensor.dailyDrops || [];
+          const useSession = sessionDrops.length > 0;
+          const drops = useSession ? sessionDrops : fallbackDrops;
+          renderWardLineChart(dailyDropCanvas, drops.map((point) => point.label), [
+            {
+              label: useSession ? 'ON-OFF drawdown' : 'Level change',
+              data: drops.map((point) => useSession ? point.dropFtPerHour : point.dropFtPerHour),
+              borderColor: '#b91c1c',
+              showLine: false,
+              unit: 'ft/hr'
+            }
+          ], { showLine: false, reverseY: false, yTitle: 'Drop rate (ft/hr)', unit: 'ft/hr' });
+        }
+
+        const weeklyDropCanvas = document.getElementById(`uidWeeklyDropChart${index}`);
+        if (weeklyDropCanvas) {
+          const weeklyDrops = sensor.weeklyDrops || [];
+          renderWardLineChart(weeklyDropCanvas, weeklyDrops.map((point) => point.label), [
+            {
+              label: 'Weekly drop/day',
+              data: weeklyDrops.map((point) => point.dropFtPerDay),
+              borderColor: '#7f0000',
+              showLine: false,
+              unit: 'ft/day'
+            },
+            {
+              label: 'Weekly drop/hour',
+              data: weeklyDrops.map((point) => point.dropFtPerHour),
+              borderColor: '#c77700',
+              showLine: false,
+              unit: 'ft/hr',
+              yAxisID: 'y1'
+            }
+          ], { showLine: false, reverseY: false, yTitle: 'Drop/day (ft/day)', secondAxis: 'Drop/hour (ft/hr)' });
+        }
       });
 
       document.querySelectorAll('.uid-chart-card').forEach((details) => {

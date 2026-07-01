@@ -306,12 +306,13 @@
       gap: 8px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
+      background: #f8fbfc;
     }
 
     .export-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
       min-width: 0;
     }
 
@@ -320,6 +321,8 @@
       width: 100%;
       padding-left: 8px;
       padding-right: 8px;
+      font-size: 11px;
+      white-space: normal;
     }
 
     .stat {
@@ -674,6 +677,34 @@
       color: var(--muted);
       font-weight: 700;
       white-space: nowrap;
+    }
+
+    .uid-plot-stack {
+      display: grid;
+      gap: 8px;
+      padding: 8px;
+      background: #f7fafb;
+      border-top: 1px solid var(--line);
+    }
+
+    .uid-plot-stack details {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .uid-plot-stack summary {
+      min-height: 34px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .uid-plot-stack .mini-chart-wrap {
+      border-top: 1px solid var(--line);
     }
 
     .mini-chart-wrap {
