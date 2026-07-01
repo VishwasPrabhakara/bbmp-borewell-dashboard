@@ -113,6 +113,7 @@
         <div class="export-actions">
           <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
           <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels Excel</button>
+          <button id="downloadNotUsableCsv" class="primary" type="button">Not Usable Excel</button>
         </div>
       </section>
 
@@ -214,6 +215,7 @@
     let wardIndicatorsByName = new Map();
     let wardWeeklyByNo = new Map();
     let consumptionByWardName = new Map();
+    let consumptionByCanonicalName = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -238,6 +240,7 @@
       filteredCount: document.getElementById('filteredCount'),
       exportFiltered: document.getElementById('exportFiltered'),
       downloadWeeklyLevelsCsv: document.getElementById('downloadWeeklyLevelsCsv'),
+      downloadNotUsableCsv: document.getElementById('downloadNotUsableCsv'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -345,6 +348,22 @@
       .replace(/[^a-z0-9]+/g, ' ')
       .trim()
       .replace(/\s+/g, ' ');
+    const canonicalWardName = (value) => normalizeWardName(value)
+      .replace(/\bward\b/g, '')
+      .replace(/\bnagar\b/g, 'nagara')
+      .replace(/\bvijnana\b/g, 'vignana')
+      .replace(/\bvrishabhavathi\b/g, 'vrisabhavathi')
+      .replace(/\bchikkalasandra\b/g, 'chikkalsandra')
+      .replace(/\bkonanakunte\b/g, 'konankunte')
+      .replace(/\bneelasandra\b/g, 'nilasandra')
+      .replace(/\bmoodalapalya\b/g, 'mudalapalya')
+      .replace(/\bshankara matha\b/g, 'shankar matt')
+      .replace(/\blingarajapuram\b/g, 'lingarajapura')
+      .replace(/\brajagopalanagara\b/g, 'rajagopal nagara')
+      .replace(/\bdoddabommasandra\b/g, 'dodda bommasandra')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\s+/g, '');
     const wardNumberFromSearch = (query) => {
       const trimmed = String(query ?? '').trim().toLowerCase();
       const wardMatch = trimmed.match(/^ward\s*(?:no\.?|number)?\s*(\d+(?:\.0+)?)$/);
@@ -357,7 +376,13 @@
     const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
     const wardIndicatorsForProps = (props = {}) => wardIndicatorsByNo.get(wardNumber(props)) || wardIndicatorsByName.get(normalizeWardName(wardName(props)));
     const wardWeeklyForProps = (props = {}) => wardWeeklyByNo.get(wardNumber(props));
-    const consumptionForProps = (props = {}) => consumptionByWardName.get(normalizeWardName(wardName(props)));
+    const consumptionForProps = (props = {}) => {
+      const normalized = normalizeWardName(wardName(props));
+      const canonical = canonicalWardName(wardName(props));
+      return consumptionByWardName.get(normalized)
+        || consumptionByCanonicalName.get(canonical)
+        || null;
+    };
     const setSensorSectionsVisible = (visible) => {
       [
         els.sensorDetailGrid,
@@ -373,13 +398,13 @@
     const wardStyle = (feature) => {
       const props = feature.properties || {};
       const drop = Number(props._avgDropPerDay ?? wardWeeklyForProps(props)?.avgDropPerDay);
-      const color = Number.isFinite(drop) ? (drop > 0 ? '#8b0000' : drop < 0 ? '#006400' : '#4b5563') : '#0f766e';
+      const color = Number.isFinite(drop) ? (drop > 0 ? '#7f0000' : drop < 0 ? '#004d1a' : '#30343b') : '#0f766e';
       return {
         color,
-        weight: Number.isFinite(drop) ? 1.2 : 1.3,
-        opacity: Number.isFinite(drop) ? 0.9 : 0.85,
+        weight: Number.isFinite(drop) ? 1 : 1.3,
+        opacity: Number.isFinite(drop) ? 1 : 0.85,
         fillColor: color,
-        fillOpacity: Number.isFinite(drop) ? 0.82 : 0.04
+        fillOpacity: Number.isFinite(drop) ? 0.9 : 0.04
       };
     };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
@@ -784,6 +809,7 @@
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       consumptionByWardName = new Map((consumptionPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      consumptionByCanonicalName = new Map((consumptionPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1327,6 +1353,9 @@
     els.exportFiltered.addEventListener('click', exportFilteredSensors);
     els.downloadWeeklyLevelsCsv.addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.xlsx`, '_blank', 'noopener');
+    });
+    els.downloadNotUsableCsv.addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/qc/not-usable-sensors.xlsx`, '_blank', 'noopener');
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
