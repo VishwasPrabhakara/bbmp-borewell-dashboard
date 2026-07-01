@@ -1038,7 +1038,7 @@
       const center = medianValue(values);
       const mad = medianValue(values.map((value) => Math.abs(value - center)));
       if (!Number.isFinite(center) || !Number.isFinite(mad) || mad === 0 || values.length < 5) return spikeCleaned;
-      const limit = Math.max(100, mad * 6);
+      const limit = Math.max(75, mad * 3);
       return spikeCleaned.filter((point) => Math.abs(point.primary - center) <= limit);
     };
 
@@ -1340,16 +1340,18 @@
             <span>${sensor.uid}</span>
             <small>${formatTrend(sensor.dropPerDay, 'ft/day', 2)}</small>
           </summary>
-          ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two weekly values to compare.</p>' : ''}
-          <div class="uid-mode-tabs" data-uid-index="${index}">
-            <button type="button" class="active" data-mode="daily-level">Daily levels</button>
-            <button type="button" data-mode="weekly-level">Weekly levels</button>
-            <button type="button" data-mode="daily-drop">Daily drop</button>
-            <button type="button" data-mode="weekly-drop">Weekly drop</button>
-          </div>
-          <div class="mini-chart-wrap">
-            <canvas id="uidModeChart${index}"></canvas>
-          </div>
+          ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two valid weekly values to compare.</p>' : ''}
+          ${(sensor.dailyLevels || []).length || (sensor.points || []).length ? `
+            <div class="uid-mode-tabs" data-uid-index="${index}">
+              <button type="button" class="active" data-mode="daily-level">Daily levels</button>
+              <button type="button" data-mode="weekly-level">Weekly levels</button>
+              <button type="button" data-mode="daily-drop">Daily drop</button>
+              <button type="button" data-mode="weekly-drop">Weekly drop</button>
+            </div>
+            <div class="mini-chart-wrap">
+              <canvas id="uidModeChart${index}"></canvas>
+            </div>
+          ` : '<div class="ward-note uid-note">This GOOD QC sensor is listed, but it has no valid levels to plot after removing zero readings and outliers.</div>'}
         </details>
       `).join('');
       const omittedNote = omittedGoodUids.length
@@ -1377,6 +1379,7 @@
         </section>
         <section class="ward-explain">
           <h3>GOOD Sensor UIDs</h3>
+          <p class="ward-table-note">All GOOD QC sensors are listed. Some may not plot if valid levels are not available after cleaning.</p>
           <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
         </section>
       `;
@@ -1538,7 +1541,7 @@
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = 'GOOD sensor weekly levels from Jan 2026 onward.';
+      els.detailSubhead.textContent = 'GOOD sensor levels using all available cleaned records.';
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
