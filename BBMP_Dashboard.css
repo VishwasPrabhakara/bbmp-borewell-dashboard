@@ -31,20 +31,20 @@
       height: 100vh;
       min-height: 720px;
       display: grid;
-      grid-template-columns: minmax(320px, 340px) minmax(420px, 1fr) minmax(560px, 620px);
+      grid-template-columns: minmax(320px, 340px) minmax(360px, 1fr) minmax(720px, 820px);
       transition: grid-template-columns 0.2s ease;
     }
 
     .app.chart-wide {
-      grid-template-columns: minmax(300px, 320px) minmax(420px, 1fr) minmax(620px, 700px);
+      grid-template-columns: minmax(300px, 320px) minmax(340px, 1fr) minmax(800px, 900px);
     }
 
     .app.left-collapsed {
-      grid-template-columns: 0 minmax(420px, 1fr) minmax(560px, 640px);
+      grid-template-columns: 0 minmax(360px, 1fr) minmax(720px, 840px);
     }
 
     .app.left-collapsed.chart-wide {
-      grid-template-columns: 0 minmax(420px, 1fr) minmax(620px, 720px);
+      grid-template-columns: 0 minmax(340px, 1fr) minmax(800px, 920px);
     }
 
     .app.right-collapsed {
@@ -99,11 +99,11 @@
     }
 
     #toggleRight {
-      right: 634px;
+      right: 834px;
     }
 
     .app.chart-wide #toggleRight {
-      right: 714px;
+      right: 914px;
     }
 
     .app.left-collapsed #toggleLeft {

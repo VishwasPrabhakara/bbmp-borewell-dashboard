@@ -908,7 +908,8 @@
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
       canvas.style.width = '100%';
-      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const rotateLabels = Boolean(options.rotateXLabels);
       return new Chart(document.getElementById(canvasId), {
         type: 'line',
         data: {
@@ -928,7 +929,7 @@
           responsive: true,
           maintainAspectRatio: false,
           scales: {
-            x: { ticks: { minRotation: 90, maxRotation: 90, autoSkip: true, maxTicksLimit: 12 } },
+            x: { ticks: { minRotation: rotateLabels ? 90 : 0, maxRotation: rotateLabels ? 90 : 0, autoSkip: true, maxTicksLimit: rotateLabels ? 12 : 6 } },
             y: { reverse: !!options.reverseY, title: { display: true, text: options.yTitle || '' } }
           },
           plugins: {
@@ -952,7 +953,8 @@
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
       canvas.style.width = '100%';
-      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const rotateLabels = Boolean(options.rotateXLabels);
       return new Chart(document.getElementById(canvasId), {
         type: 'line',
         data: {
@@ -974,10 +976,10 @@
           scales: {
             x: {
               ticks: {
-                minRotation: 90,
-                maxRotation: 90,
+                minRotation: rotateLabels ? 90 : 0,
+                maxRotation: rotateLabels ? 90 : 0,
                 autoSkip: true,
-                maxTicksLimit: 12
+                maxTicksLimit: rotateLabels ? 12 : 6
               }
             },
             y: {
@@ -1171,13 +1173,15 @@
         ], {
           reverseY: true,
           yTitle: 'Feet below surface',
-          unit: 'ft'
+          unit: 'ft',
+          rotateXLabels: true
         });
       } else if (water.length) {
         waterChart = buildChart('waterChart', waterChart, labels, points.map((point) => point.waterLevel), 'Water Level Below Surface', '#244e9a', {
           reverseY: true,
           yTitle: 'Feet below surface',
-          unit: 'ft'
+          unit: 'ft',
+          rotateXLabels: true
         });
       } else if (waterChart) {
         waterChart.destroy();
@@ -1339,7 +1343,8 @@
     };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
-      const chartValue = (value) => Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const rotateLabels = Boolean(options.rotateXLabels);
       const chart = new Chart(canvas, {
         type: 'line',
         data: {
@@ -1363,8 +1368,8 @@
           scales: {
             x: {
               ticks: {
-                minRotation: 90,
-                maxRotation: 90,
+                minRotation: rotateLabels ? 90 : 0,
+                maxRotation: rotateLabels ? 90 : 0,
                 autoSkip: false,
                 callback(value) {
                   return monthAxisLabel(this.getLabelForValue(value));
@@ -1524,7 +1529,7 @@
               borderColor: '#0f8f4d',
               unit: 'ft'
             }
-          ], { yTitle: 'Feet below surface', unit: 'ft' });
+          ], { yTitle: 'Feet below surface', unit: 'ft', rotateXLabels: true });
           return;
         }
 
@@ -1554,7 +1559,7 @@
               showLine: false,
               unit: 'ft/hr'
             }
-          ], { showLine: false, reverseY: false, yTitle: 'Drop rate (ft/hr)', unit: 'ft/hr' });
+          ], { showLine: false, reverseY: false, yTitle: 'Drop rate (ft/hr)', unit: 'ft/hr', rotateXLabels: true });
           return;
         }
 
