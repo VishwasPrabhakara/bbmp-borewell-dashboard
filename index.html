@@ -217,6 +217,8 @@
     let consumptionByWardName = new Map();
     let consumptionByCanonicalName = new Map();
     let consumptionRows = [];
+    let populationByWardNo = new Map();
+    let populationByCanonicalName = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -377,6 +379,11 @@
     const wardQcForProps = (props = {}) => wardQcByNo.get(wardNumber(props)) || wardQcByName.get(normalizeWardName(wardName(props)));
     const wardIndicatorsForProps = (props = {}) => wardIndicatorsByNo.get(wardNumber(props)) || wardIndicatorsByName.get(normalizeWardName(wardName(props)));
     const wardWeeklyForProps = (props = {}) => wardWeeklyByNo.get(wardNumber(props));
+    const populationForProps = (props = {}) => {
+      const byNumber = populationByWardNo.get(wardNumber(props));
+      if (byNumber) return byNumber;
+      return populationByCanonicalName.get(canonicalWardName(wardName(props))) || null;
+    };
     const consumptionForProps = (props = {}) => {
       const normalized = normalizeWardName(wardName(props));
       const canonical = canonicalWardName(wardName(props));
@@ -785,13 +792,14 @@
     };
 
     const loadSensors = async () => {
-      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse] = await Promise.all([
+      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors`),
         fetch(`${API_BASE_URL}/api/qc/sensors`),
         fetch(`${API_BASE_URL}/api/qc/wards`),
         fetch(`${API_BASE_URL}/api/indicators/wards`),
         fetch(`${API_BASE_URL}/api/ward-weekly-levels`),
-        fetch(`${API_BASE_URL}/api/consumption/wards`)
+        fetch(`${API_BASE_URL}/api/consumption/wards`),
+        fetch(`${API_BASE_URL}/api/population/wards`)
       ]);
       if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await sensorResponse.json();
@@ -815,6 +823,10 @@
       if (consumptionResponse.ok) {
         consumptionPayload = await consumptionResponse.json();
       }
+      let populationPayload = { wards: [] };
+      if (populationResponse.ok) {
+        populationPayload = await populationResponse.json();
+      }
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
@@ -824,6 +836,8 @@
       consumptionRows = consumptionPayload.wards || [];
       consumptionByWardName = new Map(consumptionRows.map((item) => [normalizeWardName(item.wardName), item]));
       consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
+      populationByWardNo = new Map((populationPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      populationByCanonicalName = new Map((populationPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1104,6 +1118,64 @@
     `;
     const formatConsumption = (value) => value == null ? '-' : `${formatNumber(value, 1)} ML`;
     const formatConnections = (value) => value == null ? '-' : formatNumber(value);
+    const wardPopulation = (props = {}) => {
+      const imported = populationForProps(props);
+      const projected = Number(imported?.projectedPopulation2026);
+      if (Number.isFinite(projected) && projected > 0) return projected;
+      return Number(props.POP_TOTAL ?? props.pop_total ?? props.population ?? props.POPULATION);
+    };
+    const consumptionTableHtml = (props, consumption) => {
+      const population = wardPopulation(props);
+      const populationSource = populationForProps(props) ? 'Projected 2026' : 'Boundary population';
+      const rows = [
+        {
+          year: 2025,
+          consumption: consumption?.consumption2025Ml,
+          connections: consumption?.connections2025,
+          perConnection: consumption?.consumptionPerConnection2025
+        },
+        {
+          year: 2026,
+          consumption: consumption?.consumption2026Ml,
+          connections: consumption?.connections2026,
+          perConnection: consumption?.consumptionPerConnection2026
+        }
+      ];
+      const rowHtml = rows.map((row) => {
+        const perPersonLitres = Number.isFinite(Number(row.consumption)) && Number.isFinite(population) && population > 0
+          ? (Number(row.consumption) * 1000000) / population
+          : null;
+        return `
+          <tr>
+            <td>${row.year}</td>
+            <td>${formatConsumption(row.consumption)}</td>
+            <td>${formatConnections(row.connections)}</td>
+            <td>${formatConsumption(row.perConnection)}</td>
+            <td>${Number.isFinite(population) ? formatNumber(population) : '-'}</td>
+            <td>${perPersonLitres == null ? '-' : `${formatNumber(perPersonLitres, 1)} L/person`}</td>
+          </tr>
+        `;
+      }).join('');
+      return `
+        <section class="ward-explain">
+          <h3>Consumption</h3>
+          <table class="ward-consumption-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Consumption</th>
+                <th>Connections</th>
+                <th>Cons/Conn</th>
+                <th>Population</th>
+                <th>Est. Cons/Person</th>
+              </tr>
+            </thead>
+            <tbody>${rowHtml}</tbody>
+          </table>
+          <p class="ward-table-note">Population source: ${populationSource}. Consumption/person is annual ML converted to litres/person.</p>
+        </section>
+      `;
+    };
 
     const clearWardInlineCharts = () => {
       wardInlineCharts.forEach((chart) => chart.destroy());
@@ -1208,14 +1280,9 @@
           ${wardMetric('Not Usable', formatNumber(notUsable))}
           ${wardMetric('GOOD Sensor %', goodPercent)}
           ${wardMetric('Avg Drop/day', formatTrend(drop, 'ft/day', 2), dropClass)}
-          ${wardMetric('2025 Consumption', formatConsumption(consumption?.consumption2025Ml))}
-          ${wardMetric('2026 Consumption', formatConsumption(consumption?.consumption2026Ml))}
-          ${wardMetric('2025 Connections', formatConnections(consumption?.connections2025))}
-          ${wardMetric('2026 Connections', formatConnections(consumption?.connections2026))}
-          ${wardMetric('2025 Cons/Conn', formatConsumption(consumption?.consumptionPerConnection2025))}
-          ${wardMetric('2026 Cons/Conn', formatConsumption(consumption?.consumptionPerConnection2026))}
         </section>
         ${dropNote}
+        ${consumptionTableHtml(props, consumption)}
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           <div class="mini-chart-wrap large">

@@ -591,6 +591,35 @@
       margin: 8px 0 0;
     }
 
+    .ward-consumption-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #fff;
+      color: var(--ink);
+      font-size: 11px;
+    }
+
+    .ward-consumption-table th,
+    .ward-consumption-table td {
+      border: 1px solid var(--line);
+      padding: 6px 5px;
+      text-align: left;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    .ward-consumption-table th {
+      background: #edf4f6;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+    .ward-table-note {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
     .uid-list {
       display: flex;
       flex-wrap: wrap;
