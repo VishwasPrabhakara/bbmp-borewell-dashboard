@@ -591,10 +591,17 @@
       margin: 8px 0 0;
     }
 
-    .ward-consumption-table {
+    .ward-table-scroll {
       width: 100%;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .ward-consumption-table {
+      width: max-content;
+      min-width: 720px;
       border-collapse: collapse;
-      table-layout: fixed;
+      table-layout: auto;
       background: #fff;
       color: var(--ink);
       font-size: 11px;
@@ -606,7 +613,7 @@
       padding: 6px 5px;
       text-align: left;
       vertical-align: top;
-      word-break: break-word;
+      white-space: nowrap;
     }
 
     .ward-consumption-table th {

@@ -1118,15 +1118,14 @@
     `;
     const formatConsumption = (value) => value == null ? '-' : `${formatNumber(value, 1)} ML`;
     const formatConnections = (value) => value == null ? '-' : formatNumber(value);
-    const wardPopulation = (props = {}) => {
+    const wardPopulation = (props = {}, year = 2026) => {
       const imported = populationForProps(props);
-      const projected = Number(imported?.projectedPopulation2026);
+      const projected = Number(year === 2025 ? imported?.projectedPopulation2025 : imported?.projectedPopulation2026);
       if (Number.isFinite(projected) && projected > 0) return projected;
       return Number(props.POP_TOTAL ?? props.pop_total ?? props.population ?? props.POPULATION);
     };
     const consumptionTableHtml = (props, consumption) => {
-      const population = wardPopulation(props);
-      const populationSource = populationForProps(props) ? 'Projected 2026' : 'Boundary population';
+      const populationSource = populationForProps(props) ? 'Projected population' : 'Boundary population';
       const rows = [
         {
           year: 2025,
@@ -1142,6 +1141,7 @@
         }
       ];
       const rowHtml = rows.map((row) => {
+        const population = wardPopulation(props, row.year);
         const perPersonLitres = Number.isFinite(Number(row.consumption)) && Number.isFinite(population) && population > 0
           ? (Number(row.consumption) * 1000000) / population
           : null;
@@ -1159,20 +1159,22 @@
       return `
         <section class="ward-explain">
           <h3>Consumption</h3>
-          <table class="ward-consumption-table">
-            <thead>
-              <tr>
-                <th>Year</th>
-                <th>Consumption</th>
-                <th>Connections</th>
-                <th>Cons/Conn</th>
-                <th>Population</th>
-                <th>Est. Cons/Person</th>
-              </tr>
-            </thead>
-            <tbody>${rowHtml}</tbody>
-          </table>
-          <p class="ward-table-note">Population source: ${populationSource}. Consumption/person is annual ML converted to litres/person.</p>
+          <div class="ward-table-scroll">
+            <table class="ward-consumption-table">
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th>Consumption</th>
+                  <th>Connections</th>
+                  <th>Cons/Conn</th>
+                  <th>Population</th>
+                  <th>Est. Cons/Person</th>
+                </tr>
+              </thead>
+              <tbody>${rowHtml}</tbody>
+            </table>
+          </div>
+          <p class="ward-table-note">Population source: ${populationSource}. 2025 and 2026 use separate CAGR projections; consumption/person is annual ML converted to litres/person.</p>
         </section>
       `;
     };
