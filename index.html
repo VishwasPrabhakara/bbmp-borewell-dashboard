@@ -1008,13 +1008,30 @@
 
     const validChartLevel = (value) => {
       const number = Number(value);
-      return Number.isFinite(number) && number > 0 && number <= 1500;
+      return Number.isFinite(number) && number > 0;
     };
     const medianValue = (values) => {
       const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
       if (!sorted.length) return null;
       const middle = Math.floor(sorted.length / 2);
       return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    };
+    const localMedianValue = (points, index, radius, key) => {
+      const start = Math.max(0, index - radius);
+      const end = Math.min(points.length, index + radius + 1);
+      return medianValue(points.slice(start, end).map((point) => Number(point[key])));
+    };
+    const localMadValue = (points, index, radius, key, center) => {
+      const start = Math.max(0, index - radius);
+      const end = Math.min(points.length, index + radius + 1);
+      return medianValue(points.slice(start, end).map((point) => Math.abs(Number(point[key]) - center)));
+    };
+    const smoothExpectedValue = (points, index, radius, key) => {
+      const previous = [];
+      const next = [];
+      for (let cursor = index - 1; cursor >= 0 && previous.length < radius; cursor -= 1) previous.push(points[cursor]);
+      for (let cursor = index + 1; cursor < points.length && next.length < radius; cursor += 1) next.push(points[cursor]);
+      return medianValue(previous.concat(next).map((point) => Number(point[key])));
     };
     const cleanChartPoints = (rawPoints) => {
       const normalized = rawPoints.map((point) => {
@@ -1023,23 +1040,45 @@
         const onLevel = validChartLevel(point.onLevel) ? Number(point.onLevel) : null;
         const primary = onLevel ?? waterLevel ?? offLevel;
         return { ...point, waterLevel, offLevel, onLevel, primary };
-      }).filter((point) => point.primary != null);
+      }).filter((point) => point.primary != null && point.time)
+        .sort((a, b) => new Date(a.time) - new Date(b.time));
 
-      const spikeCleaned = normalized.filter((point, index) => {
-        if (index === 0 || index === normalized.length - 1) return true;
-        const previous = normalized[index - 1];
-        const next = normalized[index + 1];
-        return !(Math.abs(point.primary - previous.primary) > 100
-          && Math.abs(point.primary - next.primary) > 100
-          && Math.abs(previous.primary - next.primary) < 50);
-      });
+      if (normalized.length < 5) return normalized;
 
-      const values = spikeCleaned.map((point) => point.primary);
+      const values = normalized.map((point) => point.primary);
       const center = medianValue(values);
       const mad = medianValue(values.map((value) => Math.abs(value - center)));
-      if (!Number.isFinite(center) || !Number.isFinite(mad) || mad === 0 || values.length < 5) return spikeCleaned;
-      const limit = Math.max(75, mad * 3);
-      return spikeCleaned.filter((point) => Math.abs(point.primary - center) <= limit);
+      const stepMad = medianValue(values.slice(1).map((value, index) => Math.abs(value - values[index])));
+      const globalMad = Number.isFinite(mad) && mad > 0 ? mad : Number.isFinite(stepMad) && stepMad > 0 ? stepMad : 10;
+      const localRadius = normalized.length >= 9 ? 3 : 2;
+
+      return normalized.filter((point, index) => {
+        const localCenter = localMedianValue(normalized, index, localRadius, 'primary');
+        const localDeviation = localMadValue(normalized, index, localRadius, 'primary', localCenter);
+        const localLimit = Math.max(25, (Number.isFinite(localDeviation) && localDeviation > 0 ? localDeviation : globalMad) * 4);
+        const failsRollingMedian = Number.isFinite(localCenter) && Math.abs(point.primary - localCenter) > localLimit;
+
+        const smoothCenter = smoothExpectedValue(normalized, index, localRadius, 'primary');
+        const smoothLimit = Math.max(35, globalMad * 5);
+        const failsSmoothTrend = Number.isFinite(smoothCenter) && Math.abs(point.primary - smoothCenter) > smoothLimit;
+
+        let failsSlopeReversal = false;
+        if (index > 0 && index < normalized.length - 1) {
+          const previous = normalized[index - 1];
+          const next = normalized[index + 1];
+          const previousJump = Math.abs(point.primary - previous.primary);
+          const nextJump = Math.abs(point.primary - next.primary);
+          const neighbourJump = Math.abs(next.primary - previous.primary);
+          const jumpLimit = Math.max(40, globalMad * 5);
+          const neighbourLimit = Math.max(25, globalMad * 3);
+          failsSlopeReversal = previousJump > jumpLimit && nextJump > jumpLimit && neighbourJump <= neighbourLimit;
+        }
+
+        const residualLimit = Math.max(50, globalMad * 6);
+        const failsHampel = Number.isFinite(center) && Math.abs(point.primary - center) > residualLimit;
+
+        return !(failsRollingMedian || failsSmoothTrend || failsSlopeReversal || failsHampel);
+      });
     };
 
     const renderCharts = () => {
