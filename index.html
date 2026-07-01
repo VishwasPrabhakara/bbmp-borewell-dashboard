@@ -1006,19 +1006,56 @@
       });
     };
 
+    const validChartLevel = (value) => {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 && number <= 1500;
+    };
+    const medianValue = (values) => {
+      const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+      if (!sorted.length) return null;
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    };
+    const cleanChartPoints = (rawPoints) => {
+      const normalized = rawPoints.map((point) => {
+        const waterLevel = validChartLevel(point.waterLevel) ? Number(point.waterLevel) : null;
+        const offLevel = validChartLevel(point.offLevel) ? Number(point.offLevel) : null;
+        const onLevel = validChartLevel(point.onLevel) ? Number(point.onLevel) : null;
+        const primary = onLevel ?? waterLevel ?? offLevel;
+        return { ...point, waterLevel, offLevel, onLevel, primary };
+      }).filter((point) => point.primary != null);
+
+      const spikeCleaned = normalized.filter((point, index) => {
+        if (index === 0 || index === normalized.length - 1) return true;
+        const previous = normalized[index - 1];
+        const next = normalized[index + 1];
+        return !(Math.abs(point.primary - previous.primary) > 100
+          && Math.abs(point.primary - next.primary) > 100
+          && Math.abs(previous.primary - next.primary) < 50);
+      });
+
+      const values = spikeCleaned.map((point) => point.primary);
+      const center = medianValue(values);
+      const mad = medianValue(values.map((value) => Math.abs(value - center)));
+      if (!Number.isFinite(center) || !Number.isFinite(mad) || mad === 0 || values.length < 5) return spikeCleaned;
+      const limit = Math.max(100, mad * 6);
+      return spikeCleaned.filter((point) => Math.abs(point.primary - center) <= limit);
+    };
+
     const renderCharts = () => {
-      const points = filteredPoints();
+      const points = cleanChartPoints(filteredPoints());
       els.app.classList.toggle('chart-wide', points.length > 120);
       const labels = points.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
       const offLevels = points.map((point) => point.offLevel).filter((value) => Number.isFinite(value));
       const onLevels = points.map((point) => point.onLevel).filter((value) => Number.isFinite(value));
       const water = points.map((point) => point.waterLevel).filter((value) => Number.isFinite(value));
       const discharge = points.map((point) => point.discharge).filter((value) => Number.isFinite(value));
+      const hasWaterChart = offLevels.length || onLevels.length || water.length;
 
       const waterCanvas = document.getElementById('waterChart');
       const dischargeCanvas = document.getElementById('dischargeChart');
-      els.waterEmpty.style.display = water.length ? 'none' : 'grid';
-      waterCanvas.style.display = water.length ? 'block' : 'none';
+      els.waterEmpty.style.display = hasWaterChart ? 'none' : 'grid';
+      waterCanvas.style.display = hasWaterChart ? 'block' : 'none';
       els.dischargeEmpty.style.display = discharge.length ? 'none' : 'grid';
       dischargeCanvas.style.display = discharge.length ? 'block' : 'none';
 
@@ -1282,6 +1319,8 @@
     const buildWardDetailHtml = (props, wardData, localWardSensors) => {
       const count = props._sensorCount || 0;
       const goodSensors = wardData?.goodSensors || localWardSensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length;
+      const plottedGoodSensors = wardData?.plottedGoodSensorCount ?? (wardData?.sensors || []).length;
+      const omittedGoodUids = wardData?.noWeeklyDataUids || [];
       const notUsable = Math.max(count - goodSensors, 0);
       const goodPercent = count ? `${formatNumber((goodSensors / count) * 100, 1)}%` : '-';
       const avgDrop = wardData?.avgDropPerDay;
@@ -1302,31 +1341,26 @@
             <small>${formatTrend(sensor.dropPerDay, 'ft/day', 2)}</small>
           </summary>
           ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two weekly values to compare.</p>' : ''}
-          <div class="uid-plot-stack">
-            <details open>
-              <summary>Daily ON/OFF levels</summary>
-              <div class="mini-chart-wrap"><canvas id="uidDailyLevelChart${index}"></canvas></div>
-            </details>
-            <details>
-              <summary>Weekly level points</summary>
-              <div class="mini-chart-wrap"><canvas id="uidWeeklyChart${index}"></canvas></div>
-            </details>
-            <details>
-              <summary>Daily drawdown rate</summary>
-              <div class="mini-chart-wrap"><canvas id="uidDailyDropChart${index}"></canvas></div>
-            </details>
-            <details>
-              <summary>Weekly drop rate</summary>
-              <div class="mini-chart-wrap"><canvas id="uidWeeklyDropChart${index}"></canvas></div>
-            </details>
+          <div class="uid-mode-tabs" data-uid-index="${index}">
+            <button type="button" class="active" data-mode="daily-level">Daily levels</button>
+            <button type="button" data-mode="weekly-level">Weekly levels</button>
+            <button type="button" data-mode="daily-drop">Daily drop</button>
+            <button type="button" data-mode="weekly-drop">Weekly drop</button>
+          </div>
+          <div class="mini-chart-wrap">
+            <canvas id="uidModeChart${index}"></canvas>
           </div>
         </details>
       `).join('');
+      const omittedNote = omittedGoodUids.length
+        ? `<div class="ward-note">${omittedGoodUids.length} GOOD QC sensor(s) are not plotted because they have no valid weekly groundwater levels after removing zero readings and outliers: ${omittedGoodUids.join(', ')}</div>`
+        : '';
 
       return `
         <section class="ward-summary-grid">
           ${wardMetric('Total Sensors', formatNumber(count))}
           ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
+          ${wardMetric('Plotted GOOD UIDs', `${formatNumber(plottedGoodSensors)} / ${formatNumber(goodSensors)}`)}
           ${wardMetric('Not Usable', formatNumber(notUsable))}
           ${wardMetric('GOOD Sensor %', goodPercent)}
           ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
@@ -1334,6 +1368,7 @@
           ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
         </section>
         ${dropNote}
+        ${omittedNote}
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           ${hasWardWeeklyData
@@ -1369,11 +1404,18 @@
         ], { showLine: false });
       }
 
-      (wardData.sensors || []).forEach((sensor, index) => {
-        const dailyLevelCanvas = document.getElementById(`uidDailyLevelChart${index}`);
-        if (dailyLevelCanvas) {
+      const renderUidModeChart = (sensor, index, mode = 'daily-level') => {
+        const canvas = document.getElementById(`uidModeChart${index}`);
+        if (!canvas) return;
+        if (canvas._chart) {
+          canvas._chart.destroy();
+          wardInlineCharts = wardInlineCharts.filter((chart) => chart !== canvas._chart);
+          canvas._chart = null;
+        }
+
+        if (mode === 'daily-level') {
           const daily = sensor.dailyLevels || [];
-          renderWardLineChart(dailyLevelCanvas, daily.map((point) => point.label), [
+          canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), [
             {
               label: 'Water level',
               data: daily.map((point) => point.onLevel == null && point.offLevel == null ? point.primaryLevel : null),
@@ -1393,11 +1435,11 @@
               unit: 'ft'
             }
           ], { yTitle: 'Feet below surface', unit: 'ft' });
+          return;
         }
 
-        const weeklyCanvas = document.getElementById(`uidWeeklyChart${index}`);
-        if (weeklyCanvas) {
-          renderWardLineChart(weeklyCanvas, (sensor.points || []).map((point) => point.label), [
+        if (mode === 'weekly-level') {
+          canvas._chart = renderWardLineChart(canvas, (sensor.points || []).map((point) => point.label), [
             {
               label: sensor.uid,
               data: (sensor.points || []).map((point) => point.level),
@@ -1406,15 +1448,15 @@
               unit: 'ft'
             }
           ], { showLine: false, yTitle: 'Feet below surface', unit: 'ft' });
+          return;
         }
 
-        const dailyDropCanvas = document.getElementById(`uidDailyDropChart${index}`);
-        if (dailyDropCanvas) {
+        if (mode === 'daily-drop') {
           const sessionDrops = sensor.sessionDrawdowns || [];
           const fallbackDrops = sensor.dailyDrops || [];
           const useSession = sessionDrops.length > 0;
           const drops = useSession ? sessionDrops : fallbackDrops;
-          renderWardLineChart(dailyDropCanvas, drops.map((point) => point.label), [
+          canvas._chart = renderWardLineChart(canvas, drops.map((point) => point.label), [
             {
               label: useSession ? 'ON-OFF drawdown' : 'Level change',
               data: drops.map((point) => useSession ? point.dropFtPerHour : point.dropFtPerHour),
@@ -1423,12 +1465,12 @@
               unit: 'ft/hr'
             }
           ], { showLine: false, reverseY: false, yTitle: 'Drop rate (ft/hr)', unit: 'ft/hr' });
+          return;
         }
 
-        const weeklyDropCanvas = document.getElementById(`uidWeeklyDropChart${index}`);
-        if (weeklyDropCanvas) {
+        if (mode === 'weekly-drop') {
           const weeklyDrops = sensor.weeklyDrops || [];
-          renderWardLineChart(weeklyDropCanvas, weeklyDrops.map((point) => point.label), [
+          canvas._chart = renderWardLineChart(canvas, weeklyDrops.map((point) => point.label), [
             {
               label: 'Weekly drop/day',
               data: weeklyDrops.map((point) => point.dropFtPerDay),
@@ -1446,6 +1488,22 @@
             }
           ], { showLine: false, reverseY: false, yTitle: 'Drop/day (ft/day)', secondAxis: 'Drop/hour (ft/hr)' });
         }
+      };
+
+      (wardData.sensors || []).forEach((sensor, index) => {
+        renderUidModeChart(sensor, index, 'daily-level');
+      });
+
+      document.querySelectorAll('.uid-mode-tabs').forEach((tabs) => {
+        const index = Number(tabs.dataset.uidIndex);
+        const sensor = (wardData.sensors || [])[index];
+        tabs.querySelectorAll('button[data-mode]').forEach((button) => {
+          button.addEventListener('click', () => {
+            tabs.querySelectorAll('button[data-mode]').forEach((item) => item.classList.remove('active'));
+            button.classList.add('active');
+            renderUidModeChart(sensor, index, button.dataset.mode);
+          });
+        });
       });
 
       document.querySelectorAll('.uid-chart-card').forEach((details) => {

@@ -707,6 +707,29 @@
       border-top: 1px solid var(--line);
     }
 
+    .uid-mode-tabs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      padding: 8px;
+      border-top: 1px solid var(--line);
+      background: #f7fafb;
+    }
+
+    .uid-mode-tabs button {
+      min-height: 30px;
+      padding: 0 6px;
+      font-size: 11px;
+      border-radius: 6px;
+    }
+
+    .uid-mode-tabs button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+      font-weight: 800;
+    }
+
     .mini-chart-wrap {
       height: 210px;
       min-width: 0;
