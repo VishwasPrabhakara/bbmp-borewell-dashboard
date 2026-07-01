@@ -1288,7 +1288,10 @@
       const medianDrop = wardData?.medianDropPerDay;
       const maxDrop = wardData?.maxDropPerDay;
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
-      const dropClass = allDropStatsPositive ? 'bad' : [avgDrop, medianDrop, maxDrop].some((value) => Number.isFinite(Number(value))) ? 'good' : '';
+      const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
+      const hasWardWeeklyData = (wardData?.weekly || []).some((point) =>
+        Number.isFinite(Number(point.averageLevel)) || Number.isFinite(Number(point.medianLevel))
+      );
       const dropNote = goodSensors > 0 && avgDrop == null && medianDrop == null && maxDrop == null
         ? '<div class="ward-note">Drop/day is blank because the GOOD sensors in this ward do not have at least two successive weekly values to compare.</div>'
         : '';
@@ -1333,9 +1336,9 @@
         ${dropNote}
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
-          <div class="mini-chart-wrap large">
-            <canvas id="wardWeeklyChart"></canvas>
-          </div>
+          ${hasWardWeeklyData
+            ? '<div class="mini-chart-wrap large"><canvas id="wardWeeklyChart"></canvas></div>'
+            : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
         </section>
         <section class="ward-explain">
           <h3>GOOD Sensor UIDs</h3>
