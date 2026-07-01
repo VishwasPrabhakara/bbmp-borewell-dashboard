@@ -343,9 +343,11 @@
       margin-top: 5px;
       color: var(--muted);
       font-size: 10px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
     }
 
     .list {
