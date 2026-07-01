@@ -216,6 +216,7 @@
     let wardWeeklyByNo = new Map();
     let consumptionByWardName = new Map();
     let consumptionByCanonicalName = new Map();
+    let consumptionByWardNo = new Map();
     let consumptionRows = [];
     let populationByWardNo = new Map();
     let populationByCanonicalName = new Map();
@@ -353,10 +354,13 @@
       .replace(/\s+/g, ' ');
     const canonicalWardName = (value) => normalizeWardName(value)
       .replace(/\bward\b/g, '')
+      .replace(/\bnagara\b/g, 'nagar')
       .replace(/\bnagar\b/g, 'nagara')
       .replace(/\bvijnana\b/g, 'vignana')
       .replace(/\bvrishabhavathi\b/g, 'vrisabhavathi')
+      .replace(/\bvrushabhavathi\b/g, 'vrisabhavathi')
       .replace(/\bchikkalasandra\b/g, 'chikkalsandra')
+      .replace(/\bchikkallasandra\b/g, 'chikkalsandra')
       .replace(/\bkonanakunte\b/g, 'konankunte')
       .replace(/\bneelasandra\b/g, 'nilasandra')
       .replace(/\bmoodalapalya\b/g, 'mudalapalya')
@@ -364,6 +368,20 @@
       .replace(/\blingarajapuram\b/g, 'lingarajapura')
       .replace(/\brajagopalanagara\b/g, 'rajagopal nagara')
       .replace(/\bdoddabommasandra\b/g, 'dodda bommasandra')
+      .replace(/\bchowdeswari\b/g, 'chowdeshwari')
+      .replace(/\batturu\b/g, 'attur')
+      .replace(/\bhudi\b/g, 'hoodi')
+      .replace(/\bjakkuru\b/g, 'jakkur')
+      .replace(/\byeshwanthpura\b/g, 'yeshwanthpur')
+      .replace(/\bbanasavadi\b/g, 'banasawadi')
+      .replace(/\bhebbala\b/g, 'hebbal')
+      .replace(/\bdomlur\b/g, 'dommalur')
+      .replace(/\bchickpete\b/g, 'chikpet')
+      .replace(/\bgovindaraja\b/g, 'govindraj')
+      .replace(/\bnayandahalli\b/g, 'nayandanahalli')
+      .replace(/\bchamrajapet\b/g, 'chamrajpet')
+      .replace(/\bvishveshwara\b/g, 'vishweshra')
+      .replace(/\bmarathahalli\b/g, 'marathalli')
       .replace(/\s+/g, ' ')
       .trim()
       .replace(/\s+/g, '');
@@ -385,6 +403,8 @@
       return populationByCanonicalName.get(canonicalWardName(wardName(props))) || null;
     };
     const consumptionForProps = (props = {}) => {
+      const byWardNo = consumptionByWardNo.get(wardNumber(props));
+      if (byWardNo) return byWardNo;
       const normalized = normalizeWardName(wardName(props));
       const canonical = canonicalWardName(wardName(props));
       const exact = consumptionByWardName.get(normalized) || consumptionByCanonicalName.get(canonical);
@@ -864,6 +884,13 @@
       consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
       populationByWardNo = new Map((populationPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       populationByCanonicalName = new Map((populationPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
+      consumptionByWardNo = new Map();
+      for (const consumption of consumptionRows) {
+        const population = populationByCanonicalName.get(canonicalWardName(consumption.wardName));
+        if (population?.wardNo) {
+          consumptionByWardNo.set(normalizeWardNo(population.wardNo), consumption);
+        }
+      }
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1146,8 +1173,15 @@
     const formatConnections = (value) => value == null ? '-' : formatNumber(value);
     const projectedPopulationForYear = (imported, year = 2026) => {
       if (!imported) return null;
-      const projected = Number(year === 2025 ? imported.projectedPopulation2025 : imported.projectedPopulation2026);
-      return Number.isFinite(projected) && projected > 0 ? projected : null;
+      const direct = Number(imported[`projectedPopulation${year}`]);
+      if (Number.isFinite(direct) && direct > 0) return direct;
+      const base = Number(imported.population2011);
+      const cagr = Number(imported.cagr2001To2011);
+      if (Number.isFinite(base) && base > 0 && Number.isFinite(cagr)) {
+        const projected = base * ((1 + cagr) ** (year - 2011));
+        return Number.isFinite(projected) && projected > 0 ? projected : null;
+      }
+      return null;
     };
     const wardPopulation = (props = {}, year = 2026, consumption = null) => {
       const consumptionPopulation = consumption?.wardName
@@ -1159,22 +1193,13 @@
       return Number(props.POP_TOTAL ?? props.pop_total ?? props.population ?? props.POPULATION);
     };
     const consumptionTableHtml = (props, consumption) => {
-      const rows = [
-        {
-          year: 2025,
-          consumption: consumption?.consumption2025Ml,
-          months: consumption?.months2025,
-          connections: consumption?.connections2025,
-          perConnection: consumption?.consumptionPerConnection2025
-        },
-        {
-          year: 2026,
-          consumption: consumption?.consumption2026Ml,
-          months: consumption?.months2026,
-          connections: consumption?.connections2026,
-          perConnection: consumption?.consumptionPerConnection2026
-        }
-      ];
+      const rows = [2020, 2021, 2022, 2023, 2024, 2025, 2026].map((year) => ({
+        year,
+        consumption: consumption?.[`consumption${year}Ml`],
+        months: consumption?.[`months${year}`],
+        connections: consumption?.[`connections${year}`],
+        perConnection: consumption?.[`consumptionPerConnection${year}`]
+      }));
       const rowHtml = rows.map((row) => {
         const population = wardPopulation(props, row.year, consumption);
         const daysCovered = Number(row.months) > 0 ? Number(row.months) * 30.4375 : null;
@@ -1212,7 +1237,7 @@
               <tbody>${rowHtml}</tbody>
             </table>
           </div>
-          <p class="ward-table-note">LPCD = consumption ML x 1,000,000 / population / days covered. Population is matched by consumption ward name first, then ward number.</p>
+          <p class="ward-table-note">Formula: LPCD = (Consumption in ML × 1,000,000) ÷ (Population × Days covered). Days covered = Months available × 30.4375.</p>
         </section>
       `;
     };
