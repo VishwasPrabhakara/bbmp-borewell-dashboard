@@ -1130,29 +1130,33 @@
         {
           year: 2025,
           consumption: consumption?.consumption2025Ml,
+          months: consumption?.months2025,
           connections: consumption?.connections2025,
           perConnection: consumption?.consumptionPerConnection2025
         },
         {
           year: 2026,
           consumption: consumption?.consumption2026Ml,
+          months: consumption?.months2026,
           connections: consumption?.connections2026,
           perConnection: consumption?.consumptionPerConnection2026
         }
       ];
       const rowHtml = rows.map((row) => {
         const population = wardPopulation(props, row.year);
-        const perPersonLitres = Number.isFinite(Number(row.consumption)) && Number.isFinite(population) && population > 0
-          ? (Number(row.consumption) * 1000000) / population
+        const daysCovered = Number(row.months) > 0 ? Number(row.months) * 30.4375 : null;
+        const lpcd = Number.isFinite(Number(row.consumption)) && Number.isFinite(population) && population > 0 && daysCovered
+          ? (Number(row.consumption) * 1000000) / population / daysCovered
           : null;
         return `
           <tr>
             <td>${row.year}</td>
             <td>${formatConsumption(row.consumption)}</td>
+            <td>${formatNumber(row.months || 0)}</td>
             <td>${formatConnections(row.connections)}</td>
             <td>${formatConsumption(row.perConnection)}</td>
             <td>${Number.isFinite(population) ? formatNumber(population) : '-'}</td>
-            <td>${perPersonLitres == null ? '-' : `${formatNumber(perPersonLitres, 1)} L/person`}</td>
+            <td>${lpcd == null ? '-' : `${formatNumber(lpcd, 1)} LPCD`}</td>
           </tr>
         `;
       }).join('');
@@ -1165,16 +1169,17 @@
                 <tr>
                   <th>Year</th>
                   <th>Consumption</th>
+                  <th>Months</th>
                   <th>Connections</th>
                   <th>Cons/Conn</th>
                   <th>Population</th>
-                  <th>Est. Cons/Person</th>
+                  <th>Est. LPCD</th>
                 </tr>
               </thead>
               <tbody>${rowHtml}</tbody>
             </table>
           </div>
-          <p class="ward-table-note">Population source: ${populationSource}. 2025 and 2026 use separate CAGR projections; consumption/person is annual ML converted to litres/person.</p>
+          <p class="ward-table-note">Population source: ${populationSource}. LPCD = annual/partial-year consumption in ML converted to litres, divided by population and days covered.</p>
         </section>
       `;
     };
