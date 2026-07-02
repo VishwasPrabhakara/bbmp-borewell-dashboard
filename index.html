@@ -22,6 +22,14 @@
 
       <section class="controls">
         <label>
+          Data Source
+          <div class="source-toggle">
+            <button class="active" data-source="kh" type="button">KH</button>
+            <button data-source="vendor" type="button">Vendor</button>
+          </div>
+        </label>
+
+        <label>
           Search UID or Ward
           <input id="search" type="search" placeholder="UID, ward number, ward name">
         </label>
@@ -169,6 +177,7 @@
 
     let shapeLayer = null;
     let sensorLayer = L.layerGroup().addTo(map);
+    let currentDataSource = 'kh';
     let sensors = [];
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
@@ -237,6 +246,7 @@
 
     let legendFilter = '';
     let qcFilter = '';
+    const sourceQuery = () => `source=${encodeURIComponent(currentDataSource)}`;
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -799,12 +809,14 @@
     };
 
     const loadSensors = async () => {
+      const sourceLabel = currentDataSource === 'vendor' ? 'vendor' : 'KH';
+      els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
       const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/sensors`),
-        fetch(`${API_BASE_URL}/api/qc/sensors`),
+        fetch(`${API_BASE_URL}/api/sensors?${sourceQuery()}`),
+        fetch(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`),
         fetch(`${API_BASE_URL}/api/qc/wards`),
         fetch(`${API_BASE_URL}/api/indicators/wards`),
-        fetch(`${API_BASE_URL}/api/ward-weekly-levels`),
+        fetch(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}`),
         fetch(`${API_BASE_URL}/api/consumption/wards`),
         fetch(`${API_BASE_URL}/api/population/wards`)
       ]);
@@ -861,12 +873,17 @@
       fitSensors();
       if (selectedSensor) {
         const updated = sensors.find((sensor) => sensor.uid === selectedSensor.uid);
-        if (updated) selectSensor(updated, false);
+      if (updated) selectSensor(updated, false);
       }
-      showToast(`Loaded ${sensors.length} borewells; ${payload.sensorsWithWaterData || 0} have water-level data.`);
+      els.refreshStatus.textContent = `${sourceLabel} data loaded. ${sensors.length} sensors, ${payload.sensorsWithWaterData || 0} with water-level data.`;
+      showToast(`Loaded ${sensors.length} ${sourceLabel} sensors; ${payload.sensorsWithWaterData || 0} have water-level data.`);
     };
 
     const refreshData = async () => {
+      if (currentDataSource === 'vendor') {
+        showToast('Vendor data is imported from CSV files. Use the local vendor import script to update it.');
+        return;
+      }
       try {
         els.refreshStatus.textContent = 'Downloading latest KH reports...';
         await fetch(`${API_BASE_URL}/api/refresh`);
@@ -1210,8 +1227,8 @@
 
       els.detailTitle.textContent = sensor.uid;
       els.detailSubhead.textContent = sensor.hasData
-        ? 'Water-level history loaded from the latest KH download.'
-        : 'This borewell has no water-level rows in the latest KH download.';
+        ? `Water-level history loaded from the ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data source.`
+        : `This borewell has no water-level rows in the ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data source.`;
       els.detailUid.textContent = sensor.uid;
       els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
       els.detailWardName.textContent = sensor.wardName || 'Not matched';
@@ -1241,7 +1258,7 @@
       renderList(filteredSensors());
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/water-level?uid=${encodeURIComponent(sensor.uid)}`);
+        const response = await fetch(`${API_BASE_URL}/api/water-level?uid=${encodeURIComponent(sensor.uid)}&${sourceQuery()}`);
         const payload = await response.json();
         waterPoints = payload.points || [];
       } catch (error) {
@@ -1633,11 +1650,11 @@
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = 'GOOD sensor levels using all available cleaned records.';
+      els.detailSubhead.textContent = `GOOD sensor levels from ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}`);
+        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
         const payload = response.ok ? await response.json() : { ward: null };
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors);
@@ -1696,6 +1713,27 @@
       });
     });
 
+    document.querySelectorAll('button[data-source]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextSource = button.dataset.source || 'kh';
+        if (nextSource === currentDataSource) return;
+        currentDataSource = nextSource;
+        document.querySelectorAll('button[data-source]').forEach((item) => {
+          item.classList.toggle('active', item.dataset.source === currentDataSource);
+        });
+        selectedSensor = null;
+        waterPoints = [];
+        waterChart?.destroy();
+        dischargeChart?.destroy();
+        waterChart = null;
+        dischargeChart = null;
+        clearWardInlineCharts();
+        setSensorSectionsVisible(false);
+        await loadSensors();
+        if (shapeLayer) shapeLayer.setStyle(wardStyle);
+      });
+    });
+
     document.getElementById('exportSelected').addEventListener('click', () => {
       exportSelectedSensor();
     });
@@ -1741,7 +1779,7 @@
     (async () => {
       try {
         await Promise.all([drawShapeFile(), loadSensors()]);
-        refreshData();
+        if (currentDataSource === 'kh') refreshData();
       } catch (error) {
         showToast(error.message);
       }

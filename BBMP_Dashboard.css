@@ -193,6 +193,20 @@
       gap: 10px;
     }
 
+    .source-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .source-toggle button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+      font-weight: 700;
+    }
+
     .stats {
       padding: 10px 16px;
       display: grid;
