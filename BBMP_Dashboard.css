@@ -897,15 +897,31 @@
       margin-bottom: 8px;
     }
 
+    .chart-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
     .chart-head h2 {
       margin: 0;
     }
 
-    .chart-download {
+    .chart-download,
+    .chart-expand {
       min-height: 30px;
       padding: 0 10px;
       white-space: nowrap;
       font-size: 12px;
+    }
+
+    .chart-expand {
+      border-color: #b9c7d3;
+      background: #f7fafb;
+      color: var(--ink);
+      font-weight: 800;
     }
 
     .chart-box canvas {
@@ -932,6 +948,71 @@
       font-size: 13px;
       text-align: center;
       padding: 16px;
+    }
+
+    .mini-chart-wrap {
+      position: relative;
+    }
+
+    .mini-chart-expand {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      min-height: 26px;
+      padding: 0 8px;
+      font-size: 11px;
+      box-shadow: 0 4px 12px rgba(21, 35, 48, 0.14);
+    }
+
+    .chart-fullscreen {
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      display: none;
+      background: rgba(8, 15, 23, 0.78);
+      padding: 22px;
+    }
+
+    .chart-fullscreen.open {
+      display: grid;
+      place-items: center;
+    }
+
+    .chart-fullscreen-panel {
+      width: min(96vw, 1500px);
+      height: min(92vh, 920px);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      padding: 16px 18px 20px;
+    }
+
+    .chart-fullscreen-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 10px;
+    }
+
+    .chart-fullscreen-head h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .chart-fullscreen-head button {
+      min-height: 34px;
+      padding: 0 14px;
+      font-weight: 800;
+    }
+
+    #chartFullscreenCanvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
     }
 
     @media (max-width: 1100px) {

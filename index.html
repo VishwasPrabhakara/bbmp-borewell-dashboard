@@ -141,7 +141,10 @@
         <section class="chart-box" id="waterChartBox" style="display:none">
           <div class="chart-head">
             <h2>Water Level Below Surface</h2>
-            <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
+            <div class="chart-actions">
+              <button class="chart-expand" data-chart-id="waterChart" data-chart-title="Water Level Below Surface" type="button">Expand</button>
+              <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
+            </div>
           </div>
           <canvas id="waterChart"></canvas>
           <div id="waterEmpty" class="empty-chart" style="display:none">No water-level data for this borewell and range.</div>
@@ -150,7 +153,10 @@
         <section class="chart-box" id="dischargeChartBox" style="display:none">
           <div class="chart-head">
             <h2>Discharge</h2>
-            <button id="downloadDischargeChart" class="chart-download" type="button">Download PNG</button>
+            <div class="chart-actions">
+              <button class="chart-expand" data-chart-id="dischargeChart" data-chart-title="Discharge" type="button">Expand</button>
+              <button id="downloadDischargeChart" class="chart-download" type="button">Download PNG</button>
+            </div>
           </div>
           <canvas id="dischargeChart"></canvas>
           <div id="dischargeEmpty" class="empty-chart" style="display:none">No discharge data is available for this borewell and range.</div>
@@ -158,6 +164,16 @@
       </div>
     </section>
   </main>
+
+  <div class="chart-fullscreen" id="chartFullscreen" aria-hidden="true">
+    <div class="chart-fullscreen-panel">
+      <div class="chart-fullscreen-head">
+        <h2 id="chartFullscreenTitle">Chart</h2>
+        <button id="chartFullscreenClose" type="button">Close</button>
+      </div>
+      <canvas id="chartFullscreenCanvas"></canvas>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
@@ -199,6 +215,7 @@
     let waterChart = null;
     let dischargeChart = null;
     let wardInlineCharts = [];
+    let fullscreenChart = null;
 
     const els = {
       refreshStatus: document.getElementById('refreshStatus'),
@@ -242,7 +259,11 @@
       downloadDischargeChart: document.getElementById('downloadDischargeChart'),
       app: document.getElementById('app'),
       toggleLeft: document.getElementById('toggleLeft'),
-      toggleRight: document.getElementById('toggleRight')
+      toggleRight: document.getElementById('toggleRight'),
+      chartFullscreen: document.getElementById('chartFullscreen'),
+      chartFullscreenTitle: document.getElementById('chartFullscreenTitle'),
+      chartFullscreenCanvas: document.getElementById('chartFullscreenCanvas'),
+      chartFullscreenClose: document.getElementById('chartFullscreenClose')
     };
 
     let legendFilter = '';
@@ -804,6 +825,90 @@
       document.body.append(link);
       link.click();
       link.remove();
+    };
+
+    const chartByCanvasId = (canvasId) => {
+      const canvas = document.getElementById(canvasId);
+      return canvas ? Chart.getChart(canvas) : null;
+    };
+
+    const openChartFullscreen = (canvasId, title = 'Chart') => {
+      const sourceChart = chartByCanvasId(canvasId);
+      if (!sourceChart) {
+        showToast('No chart is available to expand.');
+        return;
+      }
+      fullscreenChart?.destroy();
+      fullscreenChart = null;
+      els.chartFullscreenTitle.textContent = title;
+      els.chartFullscreen.classList.add('open');
+      els.chartFullscreen.setAttribute('aria-hidden', 'false');
+
+      const sourceScales = sourceChart.options?.scales || {};
+      const fullscreenScales = {};
+      Object.entries(sourceScales).forEach(([key, scale]) => {
+        fullscreenScales[key] = {
+          position: scale.position,
+          reverse: Boolean(scale.reverse),
+          grid: scale.grid ? { drawOnChartArea: scale.grid.drawOnChartArea } : undefined,
+          title: {
+            display: Boolean(scale.title?.display),
+            text: scale.title?.text || '',
+            font: { size: 15, weight: '700' }
+          },
+          ticks: {
+            minRotation: scale.ticks?.minRotation || 0,
+            maxRotation: scale.ticks?.maxRotation || 0,
+            autoSkip: scale.ticks?.autoSkip,
+            maxTicksLimit: scale.ticks?.maxTicksLimit,
+            font: { size: 14 },
+            padding: 8
+          }
+        };
+      });
+      const sourceOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: sourceChart.options?.interaction || { mode: 'nearest', intersect: false },
+        scales: fullscreenScales,
+        plugins: {
+          legend: {
+            display: sourceChart.options?.plugins?.legend?.display !== false,
+            labels: {
+              font: { size: 16 },
+              boxWidth: 26
+            }
+          },
+          tooltip: { enabled: true }
+        }
+      };
+      const sourceData = {
+        labels: [...(sourceChart.data.labels || [])],
+        datasets: (sourceChart.data.datasets || []).map((dataset) => ({
+          ...dataset,
+          data: [...(dataset.data || [])]
+        }))
+      };
+      sourceData.datasets = (sourceData.datasets || []).map((dataset) => ({
+        ...dataset,
+        pointRadius: Math.max(Number(dataset.pointRadius ?? 3), 4),
+        pointHoverRadius: Math.max(Number(dataset.pointHoverRadius ?? 5), 7),
+        borderWidth: Math.max(Number(dataset.borderWidth ?? 2), 3)
+      }));
+
+      fullscreenChart = new Chart(els.chartFullscreenCanvas, {
+        type: sourceChart.config.type,
+        data: sourceData,
+        options: sourceOptions
+      });
+      window.setTimeout(() => fullscreenChart?.resize(), 60);
+    };
+
+    const closeChartFullscreen = () => {
+      fullscreenChart?.destroy();
+      fullscreenChart = null;
+      els.chartFullscreen.classList.remove('open');
+      els.chartFullscreen.setAttribute('aria-hidden', 'true');
     };
 
     const drawShapeFile = async () => {
@@ -1544,6 +1649,7 @@
               <button type="button" class="active" data-range="all">All Time</button>
             </div>
             <div class="mini-chart-wrap">
+              <button class="mini-chart-expand chart-expand" data-chart-id="uidModeChart${index}" data-chart-title="UID ${sensor.uid}" type="button">Expand</button>
               <canvas id="uidModeChart${index}"></canvas>
             </div>
           ` : '<div class="ward-note uid-note">This GOOD QC sensor is listed, but it has no valid levels to plot after removing zero readings and outliers.</div>'}
@@ -1568,7 +1674,7 @@
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           ${hasWardWeeklyData
-            ? '<div class="mini-chart-wrap large"><canvas id="wardWeeklyChart"></canvas></div>'
+            ? '<div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>'
             : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
         </section>
         <section class="ward-explain">
@@ -1865,6 +1971,20 @@
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('.chart-expand');
+      if (!button) return;
+      openChartFullscreen(button.dataset.chartId, button.dataset.chartTitle || 'Chart');
+    });
+    els.chartFullscreenClose.addEventListener('click', closeChartFullscreen);
+    els.chartFullscreen.addEventListener('click', (event) => {
+      if (event.target === els.chartFullscreen) closeChartFullscreen();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && els.chartFullscreen.classList.contains('open')) {
+        closeChartFullscreen();
+      }
+    });
 
     document.querySelectorAll('.range-tabs button').forEach((button) => {
       button.addEventListener('click', () => {
