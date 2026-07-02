@@ -998,7 +998,7 @@
       background: #fff;
       box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto auto minmax(0, 1fr);
       padding: 16px 18px 20px;
     }
 
@@ -1012,13 +1012,33 @@
 
     .chart-fullscreen-head h2 {
       margin: 0;
-      font-size: 22px;
+      font-size: 30px;
+      line-height: 1.1;
     }
 
     .chart-fullscreen-head button {
-      min-height: 34px;
-      padding: 0 14px;
+      min-height: 42px;
+      padding: 0 18px;
       font-weight: 800;
+      font-size: 16px;
+    }
+
+    .chart-fullscreen-controls {
+      grid-template-columns: repeat(4, minmax(130px, 1fr));
+      gap: 10px;
+      padding: 4px 0 14px;
+    }
+
+    .chart-fullscreen-controls button {
+      min-height: 42px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .chart-fullscreen-controls button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
     }
 
     #chartFullscreenCanvas {

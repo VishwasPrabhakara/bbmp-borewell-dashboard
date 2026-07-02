@@ -166,13 +166,14 @@
   </main>
 
   <div class="chart-fullscreen" id="chartFullscreen" aria-hidden="true">
-    <div class="chart-fullscreen-panel">
-      <div class="chart-fullscreen-head">
-        <h2 id="chartFullscreenTitle">Chart</h2>
-        <button id="chartFullscreenClose" type="button">Close</button>
+      <div class="chart-fullscreen-panel">
+        <div class="chart-fullscreen-head">
+          <h2 id="chartFullscreenTitle">Chart</h2>
+          <button id="chartFullscreenClose" type="button">Close</button>
+        </div>
+        <div class="chart-fullscreen-controls" id="chartFullscreenControls" style="display:none"></div>
+        <canvas id="chartFullscreenCanvas"></canvas>
       </div>
-      <canvas id="chartFullscreenCanvas"></canvas>
-    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -216,6 +217,7 @@
     let dischargeChart = null;
     let wardInlineCharts = [];
     let fullscreenChart = null;
+    let fullscreenSource = null;
 
     const els = {
       refreshStatus: document.getElementById('refreshStatus'),
@@ -263,6 +265,7 @@
       chartFullscreen: document.getElementById('chartFullscreen'),
       chartFullscreenTitle: document.getElementById('chartFullscreenTitle'),
       chartFullscreenCanvas: document.getElementById('chartFullscreenCanvas'),
+      chartFullscreenControls: document.getElementById('chartFullscreenControls'),
       chartFullscreenClose: document.getElementById('chartFullscreenClose')
     };
 
@@ -832,17 +835,56 @@
       return canvas ? Chart.getChart(canvas) : null;
     };
 
+    const fullscreenRangeContext = (canvasId) => {
+      const match = String(canvasId || '').match(/^uidModeChart(\d+)$/);
+      if (!match) return null;
+      const index = Number(match[1]);
+      const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
+      const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
+      const mode = modeTabs?.querySelector('button.active')?.dataset.mode;
+      if (!['daily-level', 'daily-drop'].includes(mode) || !rangeTabs) return null;
+      return { index, rangeTabs };
+    };
+
+    const updateFullscreenRangeControls = (canvasId) => {
+      const context = fullscreenRangeContext(canvasId);
+      if (!context) {
+        els.chartFullscreenControls.style.display = 'none';
+        els.chartFullscreenControls.innerHTML = '';
+        return;
+      }
+      const activeRange = context.rangeTabs.querySelector('button.active')?.dataset.range || 'week';
+      const labels = [
+        ['week', 'Last Week'],
+        ['month', 'Last Month'],
+        ['three', '3 Months'],
+        ['all', 'All Time']
+      ];
+      els.chartFullscreenControls.innerHTML = labels.map(([range, label]) =>
+        `<button type="button" data-fullscreen-range="${range}" class="${range === activeRange ? 'active' : ''}">${label}</button>`
+      ).join('');
+      els.chartFullscreenControls.style.display = 'grid';
+    };
+
+    const refreshFullscreenChart = () => {
+      if (!fullscreenSource || !els.chartFullscreen.classList.contains('open')) return;
+      openChartFullscreen(fullscreenSource.canvasId, fullscreenSource.title, true);
+    };
+
     const openChartFullscreen = (canvasId, title = 'Chart') => {
       const sourceChart = chartByCanvasId(canvasId);
       if (!sourceChart) {
         showToast('No chart is available to expand.');
+        if (els.chartFullscreen.classList.contains('open')) closeChartFullscreen();
         return;
       }
       fullscreenChart?.destroy();
       fullscreenChart = null;
+      fullscreenSource = { canvasId, title };
       els.chartFullscreenTitle.textContent = title;
       els.chartFullscreen.classList.add('open');
       els.chartFullscreen.setAttribute('aria-hidden', 'false');
+      updateFullscreenRangeControls(canvasId);
 
       const sourceScales = sourceChart.options?.scales || {};
       const fullscreenScales = {};
@@ -854,15 +896,15 @@
           title: {
             display: Boolean(scale.title?.display),
             text: scale.title?.text || '',
-            font: { size: 15, weight: '700' }
+            font: { size: 22, weight: '800' }
           },
           ticks: {
             minRotation: scale.ticks?.minRotation || 0,
             maxRotation: scale.ticks?.maxRotation || 0,
             autoSkip: scale.ticks?.autoSkip,
             maxTicksLimit: scale.ticks?.maxTicksLimit,
-            font: { size: 14 },
-            padding: 8
+            font: { size: 20 },
+            padding: 12
           }
         };
       });
@@ -875,11 +917,17 @@
           legend: {
             display: sourceChart.options?.plugins?.legend?.display !== false,
             labels: {
-              font: { size: 16 },
-              boxWidth: 26
+              font: { size: 22, weight: '700' },
+              boxWidth: 34,
+              padding: 18
             }
           },
-          tooltip: { enabled: true }
+          tooltip: {
+            enabled: true,
+            titleFont: { size: 22 },
+            bodyFont: { size: 20 },
+            padding: 14
+          }
         }
       };
       const sourceData = {
@@ -891,9 +939,9 @@
       };
       sourceData.datasets = (sourceData.datasets || []).map((dataset) => ({
         ...dataset,
-        pointRadius: Math.max(Number(dataset.pointRadius ?? 3), 4),
-        pointHoverRadius: Math.max(Number(dataset.pointHoverRadius ?? 5), 7),
-        borderWidth: Math.max(Number(dataset.borderWidth ?? 2), 3)
+        pointRadius: Math.max(Number(dataset.pointRadius ?? 3), 6),
+        pointHoverRadius: Math.max(Number(dataset.pointHoverRadius ?? 5), 10),
+        borderWidth: Math.max(Number(dataset.borderWidth ?? 2), 4)
       }));
 
       fullscreenChart = new Chart(els.chartFullscreenCanvas, {
@@ -907,8 +955,11 @@
     const closeChartFullscreen = () => {
       fullscreenChart?.destroy();
       fullscreenChart = null;
+      fullscreenSource = null;
       els.chartFullscreen.classList.remove('open');
       els.chartFullscreen.setAttribute('aria-hidden', 'true');
+      els.chartFullscreenControls.style.display = 'none';
+      els.chartFullscreenControls.innerHTML = '';
     };
 
     const drawShapeFile = async () => {
@@ -1646,10 +1697,10 @@
               <button type="button" data-mode="weekly-drop">Weekly drop</button>
             </div>
             <div class="uid-range-tabs" data-uid-index="${index}">
-              <button type="button" data-range="week">Last Week</button>
+              <button type="button" class="active" data-range="week">Last Week</button>
               <button type="button" data-range="month">Last Month</button>
               <button type="button" data-range="three">3 Months</button>
-              <button type="button" class="active" data-range="all">All Time</button>
+              <button type="button" data-range="all">All Time</button>
             </div>
             <div class="mini-chart-wrap">
               <button class="mini-chart-expand chart-expand" data-chart-id="uidModeChart${index}" data-chart-title="UID ${sensor.uid}" type="button">Expand</button>
@@ -1840,7 +1891,7 @@
       };
 
       (wardData.sensors || []).forEach((sensor, index) => {
-        renderUidModeChart(sensor, index, 'daily-level', 'all');
+        renderUidModeChart(sensor, index, 'daily-level', 'week');
       });
 
       const redrawUidChart = (index) => {
@@ -1864,18 +1915,22 @@
               rangeTabs.style.display = ['daily-level', 'daily-drop'].includes(button.dataset.mode) ? 'grid' : 'none';
             }
             redrawUidChart(index);
+            refreshFullscreenChart();
           });
         });
       });
 
       document.querySelectorAll('.uid-range-tabs').forEach((tabs) => {
         const index = Number(tabs.dataset.uidIndex);
-        tabs.style.display = 'none';
+        const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
+        const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
+        tabs.style.display = ['daily-level', 'daily-drop'].includes(mode) ? 'grid' : 'none';
         tabs.querySelectorAll('button[data-range]').forEach((button) => {
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-range]').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
             redrawUidChart(index);
+            refreshFullscreenChart();
           });
         });
       });
@@ -2025,6 +2080,14 @@
     els.chartFullscreenClose.addEventListener('click', closeChartFullscreen);
     els.chartFullscreen.addEventListener('click', (event) => {
       if (event.target === els.chartFullscreen) closeChartFullscreen();
+    });
+    els.chartFullscreenControls.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-fullscreen-range]');
+      if (!button || !fullscreenSource) return;
+      const context = fullscreenRangeContext(fullscreenSource.canvasId);
+      if (!context) return;
+      const target = context.rangeTabs.querySelector(`button[data-range="${button.dataset.fullscreenRange}"]`);
+      target?.click();
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && els.chartFullscreen.classList.contains('open')) {
