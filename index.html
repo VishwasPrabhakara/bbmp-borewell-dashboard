@@ -1893,11 +1893,11 @@
 
         if (mode === 'weekly-drop') {
           const weeklyDrops = sensor.weeklyDrops || [];
-          if (weeklyDrops.length < 2) {
+          if (weeklyDrops.length < 1) {
             canvas.style.display = 'none';
             if (empty) {
               empty.style.display = 'grid';
-              empty.textContent = 'Not plotted because fewer than 2 weekly drop intervals are available.';
+              empty.textContent = 'Not plotted because fewer than 1 weekly drop interval is available.';
             }
             return;
           }
