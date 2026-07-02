@@ -928,7 +928,19 @@
             enabled: true,
             titleFont: { size: 22 },
             bodyFont: { size: 20 },
-            padding: 14
+            padding: 14,
+            callbacks: {
+              title(context) {
+                return context[0]?.label || '';
+              },
+              label(context) {
+                const value = context.parsed.y;
+                const unit = context.dataset.unit || 'ft';
+                return Number.isFinite(value)
+                  ? `${context.dataset.label}: ${value.toFixed(2)} ${unit}`
+                  : `${context.dataset.label}: N/A`;
+              }
+            }
           }
         }
       };
