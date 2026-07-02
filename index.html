@@ -913,7 +913,9 @@
       const sourceOptions = {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: sourceChart.options?.interaction || { mode: 'nearest', intersect: false },
+        events: ['mousemove', 'mouseout', 'click', 'touchstart', 'touchmove'],
+        interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+        hover: { mode: 'nearest', intersect: false },
         scales: fullscreenScales,
         plugins: {
           legend: {
@@ -926,6 +928,8 @@
           },
           tooltip: {
             enabled: true,
+            mode: 'nearest',
+            intersect: false,
             titleFont: { size: 22 },
             bodyFont: { size: 20 },
             padding: 14,
