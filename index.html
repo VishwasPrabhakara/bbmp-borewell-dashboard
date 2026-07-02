@@ -190,6 +190,7 @@
     let consumptionRows = [];
     let populationByWardNo = new Map();
     let populationByCanonicalName = new Map();
+    let dashboardDataCache = new Map();
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -824,9 +825,59 @@
       map.fitBounds(shapeLayer.getBounds().pad(0.08));
     };
 
+    const applyLoadedDashboardData = (loaded, sourceLabel, fromCache = false) => {
+      const {
+        payload,
+        qcPayload,
+        wardQcPayload,
+        indicatorsPayload,
+        wardWeeklyPayload,
+        consumptionPayload,
+        populationPayload
+      } = loaded;
+
+      sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
+      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      consumptionRows = consumptionPayload.wards || [];
+      consumptionByWardName = new Map(consumptionRows.map((item) => [normalizeWardName(item.wardName), item]));
+      consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
+      populationByWardNo = new Map((populationPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      populationByCanonicalName = new Map((populationPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
+      consumptionByWardNo = new Map();
+      for (const consumption of consumptionRows) {
+        const population = populationByCanonicalName.get(canonicalWardName(consumption.wardName));
+        if (population?.wardNo) {
+          consumptionByWardNo.set(normalizeWardNo(population.wardNo), consumption);
+        }
+      }
+      sensors = (payload.sensors || []).map((sensor) => ({
+        ...sensor,
+        qc: sensorQcByUid.get(String(sensor.uid)) || null
+      }));
+      assignSensorsToWards();
+      renderSensors();
+      fitSensors();
+      if (selectedSensor) {
+        const updated = sensors.find((sensor) => sensor.uid === selectedSensor.uid);
+        if (updated) selectSensor(updated, false);
+      }
+      if (shapeLayer) shapeLayer.setStyle(wardStyle);
+      els.refreshStatus.textContent = `${sourceLabel} data ${fromCache ? 'restored' : 'loaded'}. ${sensors.length} sensors, ${payload.sensorsWithWaterData || 0} with water-level data.`;
+      showToast(`${fromCache ? 'Restored' : 'Loaded'} ${sensors.length} ${sourceLabel} sensors; ${payload.sensorsWithWaterData || 0} have water-level data.`);
+    };
+
     const loadSensors = async () => {
       const sourceLabel = sourceDisplayName();
       els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
+      const cacheKey = currentDataSource;
+      if (dashboardDataCache.has(cacheKey)) {
+        applyLoadedDashboardData(dashboardDataCache.get(cacheKey), sourceLabel, true);
+        return;
+      }
       els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
       showSensorLoading(`Loading ${sourceLabel} sensors...`);
       const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
@@ -864,37 +915,9 @@
       if (populationResponse.ok) {
         populationPayload = await populationResponse.json();
       }
-      sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
-      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      consumptionRows = consumptionPayload.wards || [];
-      consumptionByWardName = new Map(consumptionRows.map((item) => [normalizeWardName(item.wardName), item]));
-      consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
-      populationByWardNo = new Map((populationPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      populationByCanonicalName = new Map((populationPayload.wards || []).map((item) => [canonicalWardName(item.wardName), item]));
-      consumptionByWardNo = new Map();
-      for (const consumption of consumptionRows) {
-        const population = populationByCanonicalName.get(canonicalWardName(consumption.wardName));
-        if (population?.wardNo) {
-          consumptionByWardNo.set(normalizeWardNo(population.wardNo), consumption);
-        }
-      }
-      sensors = (payload.sensors || []).map((sensor) => ({
-        ...sensor,
-        qc: sensorQcByUid.get(String(sensor.uid)) || null
-      }));
-      assignSensorsToWards();
-      renderSensors();
-      fitSensors();
-      if (selectedSensor) {
-        const updated = sensors.find((sensor) => sensor.uid === selectedSensor.uid);
-      if (updated) selectSensor(updated, false);
-      }
-      els.refreshStatus.textContent = `${sourceLabel} data loaded. ${sensors.length} sensors, ${payload.sensorsWithWaterData || 0} with water-level data.`;
-      showToast(`Loaded ${sensors.length} ${sourceLabel} sensors; ${payload.sensorsWithWaterData || 0} have water-level data.`);
+      const loaded = { payload, qcPayload, wardQcPayload, indicatorsPayload, wardWeeklyPayload, consumptionPayload, populationPayload };
+      dashboardDataCache.set(cacheKey, loaded);
+      applyLoadedDashboardData(loaded, sourceLabel, false);
     };
 
     const refreshData = async () => {
@@ -903,6 +926,7 @@
         return;
       }
       try {
+        dashboardDataCache.delete('kh');
         els.refreshStatus.textContent = 'Downloading latest KrishiHrudaya reports...';
         await fetch(`${API_BASE_URL}/api/refresh`);
         const started = Date.now();
@@ -918,6 +942,7 @@
               const finished = status.lastFinished ? new Date(status.lastFinished).toLocaleString('en-IN') : 'now';
               els.refreshStatus.textContent = `Latest KrishiHrudaya data updated ${finished}.`;
             }
+            dashboardDataCache.delete('kh');
             await loadSensors();
           }
         }, 2500);
