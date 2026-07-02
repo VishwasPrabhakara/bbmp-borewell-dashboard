@@ -208,6 +208,8 @@
     let populationByWardNo = new Map();
     let populationByCanonicalName = new Map();
     let dashboardDataCache = new Map();
+    let sharedDashboardDataCache = null;
+    let loadSequence = 0;
     let wardFeatures = [];
     let wardLayers = [];
     let selectedSensor = null;
@@ -981,23 +983,7 @@
       map.fitBounds(shapeLayer.getBounds().pad(0.08));
     };
 
-    const applyLoadedDashboardData = (loaded, sourceLabel, fromCache = false) => {
-      const {
-        payload,
-        qcPayload,
-        wardQcPayload,
-        indicatorsPayload,
-        wardWeeklyPayload,
-        consumptionPayload,
-        populationPayload
-      } = loaded;
-
-      sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
-      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+    const applySharedDashboardData = (consumptionPayload = { wards: [] }, populationPayload = { wards: [] }) => {
       consumptionRows = consumptionPayload.wards || [];
       consumptionByWardName = new Map(consumptionRows.map((item) => [normalizeWardName(item.wardName), item]));
       consumptionByCanonicalName = new Map(consumptionRows.map((item) => [canonicalWardName(item.wardName), item]));
@@ -1010,6 +996,10 @@
           consumptionByWardNo.set(normalizeWardNo(population.wardNo), consumption);
         }
       }
+    };
+
+    const applySensorDashboardData = (payload, qcPayload, sourceLabel, fromCache = false) => {
+      sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
         ...sensor,
         qc: sensorQcByUid.get(String(sensor.uid)) || null
@@ -1017,63 +1007,106 @@
       assignSensorsToWards();
       renderSensors();
       fitSensors();
+      els.refreshStatus.textContent = `${sourceLabel} sensors ${fromCache ? 'restored' : 'loaded'}. Loading ward metrics in background...`;
+    };
+
+    const applyWardDashboardData = (loaded, sourceLabel, fromCache = false) => {
+      const {
+        wardQcPayload,
+        indicatorsPayload,
+        wardWeeklyPayload,
+        consumptionPayload,
+        populationPayload
+      } = loaded;
+
+      wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
+      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      applySharedDashboardData(consumptionPayload, populationPayload);
+      assignSensorsToWards();
+      renderSensors();
       if (selectedSensor) {
         const updated = sensors.find((sensor) => sensor.uid === selectedSensor.uid);
         if (updated) selectSensor(updated, false);
       }
       if (shapeLayer) shapeLayer.setStyle(wardStyle);
-      els.refreshStatus.textContent = `${sourceLabel} data ${fromCache ? 'restored' : 'loaded'}. ${sensors.length} sensors, ${payload.sensorsWithWaterData || 0} with water-level data.`;
-      showToast(`${fromCache ? 'Restored' : 'Loaded'} ${sensors.length} ${sourceLabel} sensors; ${payload.sensorsWithWaterData || 0} have water-level data.`);
+      els.refreshStatus.textContent = `${sourceLabel} ward metrics ${fromCache ? 'restored' : 'loaded'}. ${sensors.length} sensors ready.`;
+    };
+
+    const applyLoadedDashboardData = (loaded, sourceLabel, fromCache = false) => {
+      applySensorDashboardData(loaded.payload, loaded.qcPayload, sourceLabel, fromCache);
+      applyWardDashboardData(loaded, sourceLabel, fromCache);
+      showToast(`${fromCache ? 'Restored' : 'Loaded'} ${sensors.length} ${sourceLabel} sensors.`);
     };
 
     const loadSensors = async () => {
       const sourceLabel = sourceDisplayName();
       els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
       const cacheKey = currentDataSource;
+      const sequence = ++loadSequence;
       if (dashboardDataCache.has(cacheKey)) {
         applyLoadedDashboardData(dashboardDataCache.get(cacheKey), sourceLabel, true);
         return;
       }
       els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
       showSensorLoading(`Loading ${sourceLabel} sensors...`);
-      const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
+      const [sensorResponse, qcResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors?${sourceQuery()}`),
-        fetch(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`),
-        fetch(`${API_BASE_URL}/api/qc/wards`),
-        fetch(`${API_BASE_URL}/api/indicators/wards`),
-        fetch(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}`),
-        fetch(`${API_BASE_URL}/api/consumption/wards`),
-        fetch(`${API_BASE_URL}/api/population/wards`)
+        fetch(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`)
       ]);
+      if (sequence !== loadSequence) return;
       if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
       const payload = await sensorResponse.json();
       let qcPayload = { sensors: [] };
       if (qcResponse.ok) {
         qcPayload = await qcResponse.json();
       }
-      let wardQcPayload = { wards: [] };
-      if (wardQcResponse.ok) {
-        wardQcPayload = await wardQcResponse.json();
-      }
-      let indicatorsPayload = { wards: [] };
-      if (indicatorsResponse.ok) {
-        indicatorsPayload = await indicatorsResponse.json();
-      }
-      let wardWeeklyPayload = { wards: [] };
-      if (wardWeeklyResponse.ok) {
-        wardWeeklyPayload = await wardWeeklyResponse.json();
-      }
-      let consumptionPayload = { wards: [] };
-      if (consumptionResponse.ok) {
-        consumptionPayload = await consumptionResponse.json();
-      }
-      let populationPayload = { wards: [] };
-      if (populationResponse.ok) {
-        populationPayload = await populationResponse.json();
-      }
-      const loaded = { payload, qcPayload, wardQcPayload, indicatorsPayload, wardWeeklyPayload, consumptionPayload, populationPayload };
-      dashboardDataCache.set(cacheKey, loaded);
-      applyLoadedDashboardData(loaded, sourceLabel, false);
+      applySensorDashboardData(payload, qcPayload, sourceLabel, false);
+
+      const sharedPromise = sharedDashboardDataCache
+        ? Promise.resolve(sharedDashboardDataCache)
+        : Promise.all([
+          fetch(`${API_BASE_URL}/api/consumption/wards`),
+          fetch(`${API_BASE_URL}/api/population/wards`)
+        ]).then(async ([consumptionResponse, populationResponse]) => {
+          const shared = {
+            consumptionPayload: consumptionResponse.ok ? await consumptionResponse.json() : { wards: [] },
+            populationPayload: populationResponse.ok ? await populationResponse.json() : { wards: [] }
+          };
+          sharedDashboardDataCache = shared;
+          return shared;
+        });
+
+      Promise.all([
+        fetch(`${API_BASE_URL}/api/qc/wards`),
+        fetch(`${API_BASE_URL}/api/indicators/wards`),
+        fetch(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}`),
+        sharedPromise
+      ]).then(async ([wardQcResponse, indicatorsResponse, wardWeeklyResponse, shared]) => {
+        if (sequence !== loadSequence) return;
+        const wardQcPayload = wardQcResponse.ok ? await wardQcResponse.json() : { wards: [] };
+        const indicatorsPayload = indicatorsResponse.ok ? await indicatorsResponse.json() : { wards: [] };
+        const wardWeeklyPayload = wardWeeklyResponse.ok ? await wardWeeklyResponse.json() : { wards: [] };
+        const loaded = {
+          payload,
+          qcPayload,
+          wardQcPayload,
+          indicatorsPayload,
+          wardWeeklyPayload,
+          consumptionPayload: shared.consumptionPayload,
+          populationPayload: shared.populationPayload
+        };
+        dashboardDataCache.set(cacheKey, loaded);
+        applyWardDashboardData(loaded, sourceLabel, false);
+      }).catch((error) => {
+        if (sequence === loadSequence) {
+          els.refreshStatus.textContent = `${sourceLabel} sensors loaded. Ward metrics are still unavailable.`;
+          showToast(`Could not load ${sourceLabel} ward metrics.`);
+          console.error(error);
+        }
+      });
     };
 
     const refreshData = async () => {
