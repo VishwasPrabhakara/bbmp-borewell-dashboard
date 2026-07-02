@@ -1698,9 +1698,6 @@
         const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
         const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
         const range = rangeTabs?.querySelector('button.active')?.dataset.range || 'all';
-        if (rangeTabs) {
-          rangeTabs.style.display = ['daily-level', 'daily-drop'].includes(mode) ? 'grid' : 'none';
-        }
         renderUidModeChart(sensor, index, mode, range);
       };
 
@@ -1710,6 +1707,10 @@
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-mode]').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
+            const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
+            if (rangeTabs) {
+              rangeTabs.style.display = ['daily-level', 'daily-drop'].includes(button.dataset.mode) ? 'grid' : 'none';
+            }
             redrawUidChart(index);
           });
         });
@@ -1717,9 +1718,7 @@
 
       document.querySelectorAll('.uid-range-tabs').forEach((tabs) => {
         const index = Number(tabs.dataset.uidIndex);
-        const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
-        const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
-        tabs.style.display = ['daily-level', 'daily-drop'].includes(mode) ? 'grid' : 'none';
+        tabs.style.display = 'none';
         tabs.querySelectorAll('button[data-range]').forEach((button) => {
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-range]').forEach((item) => item.classList.remove('active'));
