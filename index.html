@@ -17,15 +17,15 @@
     <aside>
       <header>
         <h1>BBMP Borewell Dashboard</h1>
-        <p class="subhead" id="refreshStatus">Opening the dashboard starts the latest KH data download.</p>
+        <p class="subhead" id="refreshStatus">Opening the dashboard starts the latest KrishiHrudaya data download.</p>
       </header>
 
       <section class="controls">
         <label>
           Data Source
           <div class="source-toggle">
-            <button class="active" data-source="kh" type="button">KH</button>
-            <button data-source="vendor" type="button">Vendor</button>
+            <button class="active" data-source="kh" type="button">KrishiHrudaya</button>
+            <button data-source="vendor" type="button">Nimblevision</button>
           </div>
         </label>
 
@@ -247,6 +247,7 @@
     let legendFilter = '';
     let qcFilter = '';
     const sourceQuery = () => `source=${encodeURIComponent(currentDataSource)}`;
+    const sourceDisplayName = () => currentDataSource === 'vendor' ? 'Nimblevision' : 'KrishiHrudaya';
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -809,7 +810,7 @@
     };
 
     const loadSensors = async () => {
-      const sourceLabel = currentDataSource === 'vendor' ? 'vendor' : 'KH';
+      const sourceLabel = sourceDisplayName();
       els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
       const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors?${sourceQuery()}`),
@@ -881,24 +882,24 @@
 
     const refreshData = async () => {
       if (currentDataSource === 'vendor') {
-        showToast('Vendor data is imported from CSV files. Use the local vendor import script to update it.');
+        showToast('Nimblevision data is imported from CSV files. Use the local Nimblevision import script to update it.');
         return;
       }
       try {
-        els.refreshStatus.textContent = 'Downloading latest KH reports...';
+        els.refreshStatus.textContent = 'Downloading latest KrishiHrudaya reports...';
         await fetch(`${API_BASE_URL}/api/refresh`);
         const started = Date.now();
         const timer = window.setInterval(async () => {
           const status = await (await fetch(`${API_BASE_URL}/api/status`)).json();
-          els.refreshStatus.textContent = status.running ? 'Downloading latest KH reports...' : 'Checking latest KH data...';
+          els.refreshStatus.textContent = status.running ? 'Downloading latest KrishiHrudaya reports...' : 'Checking latest KrishiHrudaya data...';
           if (!status.running || Date.now() - started > 260000) {
             window.clearInterval(timer);
             if (status.ok === false) {
-              els.refreshStatus.textContent = 'Could not refresh KH data. Using the latest local files.';
-              showToast('Could not refresh KH data. Check the downloader login or network connection.');
+              els.refreshStatus.textContent = 'Could not refresh KrishiHrudaya data. Using the latest local files.';
+              showToast('Could not refresh KrishiHrudaya data. Check the downloader login or network connection.');
             } else {
               const finished = status.lastFinished ? new Date(status.lastFinished).toLocaleString('en-IN') : 'now';
-              els.refreshStatus.textContent = `Latest KH data updated ${finished}.`;
+              els.refreshStatus.textContent = `Latest KrishiHrudaya data updated ${finished}.`;
             }
             await loadSensors();
           }
@@ -1227,8 +1228,8 @@
 
       els.detailTitle.textContent = sensor.uid;
       els.detailSubhead.textContent = sensor.hasData
-        ? `Water-level history loaded from the ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data source.`
-        : `This borewell has no water-level rows in the ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data source.`;
+        ? `Water-level history loaded from the ${sourceDisplayName()} data source.`
+        : `This borewell has no water-level rows in the ${sourceDisplayName()} data source.`;
       els.detailUid.textContent = sensor.uid;
       els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
       els.detailWardName.textContent = sensor.wardName || 'Not matched';
@@ -1650,7 +1651,7 @@
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = `GOOD sensor levels from ${currentDataSource === 'vendor' ? 'vendor' : 'KH'} data using all available cleaned records.`;
+      els.detailSubhead.textContent = `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
