@@ -1440,7 +1440,7 @@
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
-      const rotateLabels = Boolean(options.rotateXLabels);
+      const rotateLabels = Boolean(options.rotateXLabels) || (options.autoRotateXLabels && labels.length > 10);
       const chart = new Chart(canvas, {
         type: 'line',
         data: {
@@ -1598,7 +1598,7 @@
             borderColor: '#0f8f4d',
             showLine: false
           }
-        ], { showLine: false });
+        ], { showLine: false, autoRotateXLabels: true });
       }
 
       const renderUidModeChart = (sensor, index, mode = 'daily-level', range = 'all') => {
@@ -1698,6 +1698,9 @@
         const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
         const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
         const range = rangeTabs?.querySelector('button.active')?.dataset.range || 'all';
+        if (rangeTabs) {
+          rangeTabs.style.display = ['daily-level', 'daily-drop'].includes(mode) ? 'grid' : 'none';
+        }
         renderUidModeChart(sensor, index, mode, range);
       };
 
@@ -1714,6 +1717,9 @@
 
       document.querySelectorAll('.uid-range-tabs').forEach((tabs) => {
         const index = Number(tabs.dataset.uidIndex);
+        const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
+        const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
+        tabs.style.display = ['daily-level', 'daily-drop'].includes(mode) ? 'grid' : 'none';
         tabs.querySelectorAll('button[data-range]').forEach((button) => {
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-range]').forEach((item) => item.classList.remove('active'));
