@@ -727,7 +727,8 @@
       border-top: 1px solid var(--line);
     }
 
-    .uid-mode-tabs {
+    .uid-mode-tabs,
+    .uid-range-tabs {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
@@ -736,14 +737,21 @@
       background: #f7fafb;
     }
 
-    .uid-mode-tabs button {
+    .uid-range-tabs {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .uid-mode-tabs button,
+    .uid-range-tabs button {
       min-height: 30px;
       padding: 0 6px;
       font-size: 11px;
       border-radius: 6px;
     }
 
-    .uid-mode-tabs button.active {
+    .uid-mode-tabs button.active,
+    .uid-range-tabs button.active {
       background: var(--ink);
       border-color: var(--ink);
       color: #fff;
@@ -751,14 +759,14 @@
     }
 
     .mini-chart-wrap {
-      height: 210px;
+      height: 250px;
       min-width: 0;
-      padding: 8px;
+      padding: 8px 8px 28px;
     }
 
     .mini-chart-wrap.large {
-      height: 250px;
-      padding: 0;
+      height: 280px;
+      padding: 4px 4px 24px;
     }
 
     .mini-chart-wrap canvas {
@@ -875,7 +883,7 @@
     .chart-box {
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 10px;
+      padding: 10px 10px 24px;
       min-height: 230px;
       min-width: 0;
       overflow: hidden;
@@ -906,6 +914,14 @@
       min-width: 100%;
       max-width: 100%;
       display: block;
+    }
+
+    .app.nimblevision-mode #waterChartBox canvas {
+      height: 420px !important;
+    }
+
+    .app.nimblevision-mode #waterChartBox {
+      min-height: 460px;
     }
 
     .empty-chart {

@@ -398,11 +398,13 @@
         els.sensorDetailGrid,
         els.sensorExportControls,
         els.timeRangeSection,
-        els.waterChartBox,
-        els.dischargeChartBox
+        els.waterChartBox
       ].forEach((element) => {
         if (element) element.style.display = visible ? '' : 'none';
       });
+      if (els.dischargeChartBox) {
+        els.dischargeChartBox.style.display = visible && currentDataSource !== 'vendor' ? '' : 'none';
+      }
       if (els.wardDetailPanel) els.wardDetailPanel.style.display = visible ? 'none' : '';
     };
     const dropStatsForProps = (props = {}) => {
@@ -455,6 +457,19 @@
       els.toast.classList.add('show');
       window.clearTimeout(showToast.timer);
       showToast.timer = window.setTimeout(() => els.toast.classList.remove('show'), 5200);
+    };
+
+    const showSensorLoading = (message = 'Loading sensors...') => {
+      sensorLayer.clearLayers();
+      sensors = [];
+      selectedSensor = null;
+      els.totalCount.textContent = '0';
+      els.withDataCount.textContent = '0';
+      els.withoutDataCount.textContent = '0';
+      els.goodQcCount.textContent = '0';
+      els.reviewQcCount.textContent = '0';
+      els.filteredCount.textContent = '0';
+      els.sensorList.innerHTML = `<div class="sensor-meta" style="padding:14px 10px">${message}</div>`;
     };
 
     const pointInRing = (point, ring) => {
@@ -811,7 +826,9 @@
 
     const loadSensors = async () => {
       const sourceLabel = sourceDisplayName();
+      els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
       els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
+      showSensorLoading(`Loading ${sourceLabel} sensors...`);
       const [sensorResponse, qcResponse, wardQcResponse, indicatorsResponse, wardWeeklyResponse, consumptionResponse, populationResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/sensors?${sourceQuery()}`),
         fetch(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`),
@@ -910,16 +927,22 @@
       }
     };
 
-    const rangeStart = (points) => {
-      if (selectedRange === 'all' || !points.length) return null;
+    const rangeStart = (points, range = selectedRange) => {
+      if (range === 'all' || !points.length) return null;
       const latest = new Date(points[points.length - 1].time);
-      const days = selectedRange === 'week' ? 7 : selectedRange === 'month' ? 30 : 90;
+      const days = range === 'week' ? 7 : range === 'month' ? 30 : 90;
       return new Date(latest.getTime() - days * 24 * 60 * 60 * 1000);
     };
 
     const filteredPoints = () => {
       const start = rangeStart(waterPoints);
       return waterPoints.filter((point) => !start || new Date(point.time) >= start);
+    };
+
+    const pointsForRange = (points, range = 'all') => {
+      const ordered = (points || []).filter((point) => point.time).sort((a, b) => new Date(a.time) - new Date(b.time));
+      const start = rangeStart(ordered, range);
+      return ordered.filter((point) => !start || new Date(point.time) >= start);
     };
 
     const buildChart = (canvasId, existing, labels, values, label, color, options = {}) => {
@@ -1100,6 +1123,29 @@
       if (cleaned.length === 2 && Math.abs(Number(cleaned[1][key]) - Number(cleaned[0][key])) > jumpLimit) return [];
       return cleaned;
     };
+    const dominantContinuousChartSegment = (points, key) => {
+      if (points.length < 2) return points;
+      const jumpLimit = 80;
+      const segments = [];
+      let current = [points[0]];
+      for (let index = 1; index < points.length; index += 1) {
+        const previous = points[index - 1];
+        const point = points[index];
+        if (Math.abs(Number(point[key]) - Number(previous[key])) > jumpLimit) {
+          segments.push(current);
+          current = [point];
+        } else {
+          current.push(point);
+        }
+      }
+      segments.push(current);
+      if (segments.length === 1) return points;
+      segments.sort((a, b) => {
+        if (b.length !== a.length) return b.length - a.length;
+        return new Date(b[b.length - 1].time) - new Date(a[a.length - 1].time);
+      });
+      return segments[0].length >= 2 ? segments[0] : [];
+    };
     const cleanChartPoints = (rawPoints) => {
       const normalized = rawPoints.map((point) => {
         const waterLevel = validChartLevel(point.waterLevel) ? Number(point.waterLevel) : null;
@@ -1110,7 +1156,10 @@
       }).filter((point) => point.primary != null && point.time)
         .sort((a, b) => new Date(a.time) - new Date(b.time));
 
-      if (normalized.length < 5) return cleanShortChartSeries(normalized, 'primary');
+      const uniqueLevels = new Set(normalized.map((point) => Number(point.primary).toFixed(2)));
+      if (normalized.length >= 2 && uniqueLevels.size <= 1) return [];
+
+      if (normalized.length < 5) return dominantContinuousChartSegment(cleanShortChartSeries(normalized, 'primary'), 'primary');
 
       const values = normalized.map((point) => point.primary);
       const center = medianValue(values);
@@ -1119,7 +1168,7 @@
       const globalMad = Number.isFinite(mad) && mad > 0 ? mad : Number.isFinite(stepMad) && stepMad > 0 ? stepMad : 10;
       const localRadius = normalized.length >= 9 ? 3 : 2;
 
-      return normalized.filter((point, index) => {
+      const cleaned = normalized.filter((point, index) => {
         const localCenter = localMedianValue(normalized, index, localRadius, 'primary');
         const localDeviation = localMadValue(normalized, index, localRadius, 'primary', localCenter);
         const localLimit = Math.max(25, (Number.isFinite(localDeviation) && localDeviation > 0 ? localDeviation : globalMad) * 4);
@@ -1146,11 +1195,13 @@
 
         return !(failsRollingMedian || failsSmoothTrend || failsSlopeReversal || failsHampel);
       });
+      return dominantContinuousChartSegment(cleaned, 'primary');
     };
 
     const renderCharts = () => {
       const points = cleanChartPoints(filteredPoints());
       els.app.classList.toggle('chart-wide', points.length > 120);
+      els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
       const labels = points.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
       const offLevels = points.map((point) => point.offLevel).filter((value) => Number.isFinite(value));
       const onLevels = points.map((point) => point.onLevel).filter((value) => Number.isFinite(value));
@@ -1162,8 +1213,10 @@
       const dischargeCanvas = document.getElementById('dischargeChart');
       els.waterEmpty.style.display = hasWaterChart ? 'none' : 'grid';
       waterCanvas.style.display = hasWaterChart ? 'block' : 'none';
-      els.dischargeEmpty.style.display = discharge.length ? 'none' : 'grid';
-      dischargeCanvas.style.display = discharge.length ? 'block' : 'none';
+      const showDischargeBox = currentDataSource !== 'vendor';
+      els.dischargeChartBox.style.display = showDischargeBox ? '' : 'none';
+      els.dischargeEmpty.style.display = showDischargeBox && discharge.length ? 'none' : 'grid';
+      dischargeCanvas.style.display = showDischargeBox && discharge.length ? 'block' : 'none';
 
       if (offLevels.length || onLevels.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
@@ -1206,7 +1259,7 @@
         waterChart = null;
       }
 
-      if (discharge.length) {
+      if (showDischargeBox && discharge.length) {
         dischargeChart = buildChart('dischargeChart', dischargeChart, labels, points.map((point) => point.discharge), 'Discharge', '#c77700', {
           yTitle: 'Discharge (L/min)',
           unit: 'L/min'
@@ -1459,6 +1512,12 @@
               <button type="button" data-mode="daily-drop">Daily drop</button>
               <button type="button" data-mode="weekly-drop">Weekly drop</button>
             </div>
+            <div class="uid-range-tabs" data-uid-index="${index}">
+              <button type="button" data-range="week">Last Week</button>
+              <button type="button" data-range="month">Last Month</button>
+              <button type="button" data-range="three">3 Months</button>
+              <button type="button" class="active" data-range="all">All Time</button>
+            </div>
             <div class="mini-chart-wrap">
               <canvas id="uidModeChart${index}"></canvas>
             </div>
@@ -1517,7 +1576,7 @@
         ], { showLine: false });
       }
 
-      const renderUidModeChart = (sensor, index, mode = 'daily-level') => {
+      const renderUidModeChart = (sensor, index, mode = 'daily-level', range = 'all') => {
         const canvas = document.getElementById(`uidModeChart${index}`);
         if (!canvas) return;
         if (canvas._chart) {
@@ -1527,7 +1586,7 @@
         }
 
         if (mode === 'daily-level') {
-          const daily = sensor.dailyLevels || [];
+          const daily = pointsForRange(sensor.dailyLevels || [], range);
           canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), [
             {
               label: 'Water level',
@@ -1568,7 +1627,7 @@
           const sessionDrops = sensor.sessionDrawdowns || [];
           const fallbackDrops = sensor.dailyDrops || [];
           const useSession = sessionDrops.length > 0;
-          const drops = useSession ? sessionDrops : fallbackDrops;
+          const drops = pointsForRange(useSession ? sessionDrops : fallbackDrops, range);
           canvas._chart = renderWardLineChart(canvas, drops.map((point) => point.label), [
             {
               label: useSession ? 'ON-OFF drawdown' : 'Level change',
@@ -1604,17 +1663,37 @@
       };
 
       (wardData.sensors || []).forEach((sensor, index) => {
-        renderUidModeChart(sensor, index, 'daily-level');
+        renderUidModeChart(sensor, index, 'daily-level', 'all');
       });
+
+      const redrawUidChart = (index) => {
+        const sensor = (wardData.sensors || [])[index];
+        if (!sensor) return;
+        const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
+        const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
+        const mode = modeTabs?.querySelector('button.active')?.dataset.mode || 'daily-level';
+        const range = rangeTabs?.querySelector('button.active')?.dataset.range || 'all';
+        renderUidModeChart(sensor, index, mode, range);
+      };
 
       document.querySelectorAll('.uid-mode-tabs').forEach((tabs) => {
         const index = Number(tabs.dataset.uidIndex);
-        const sensor = (wardData.sensors || [])[index];
         tabs.querySelectorAll('button[data-mode]').forEach((button) => {
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-mode]').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
-            renderUidModeChart(sensor, index, button.dataset.mode);
+            redrawUidChart(index);
+          });
+        });
+      });
+
+      document.querySelectorAll('.uid-range-tabs').forEach((tabs) => {
+        const index = Number(tabs.dataset.uidIndex);
+        tabs.querySelectorAll('button[data-range]').forEach((button) => {
+          button.addEventListener('click', () => {
+            tabs.querySelectorAll('button[data-range]').forEach((item) => item.classList.remove('active'));
+            button.classList.add('active');
+            redrawUidChart(index);
           });
         });
       });
@@ -1721,7 +1800,9 @@
         currentDataSource = nextSource;
         document.querySelectorAll('button[data-source]').forEach((item) => {
           item.classList.toggle('active', item.dataset.source === currentDataSource);
+          item.disabled = true;
         });
+        els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
         selectedSensor = null;
         waterPoints = [];
         waterChart?.destroy();
@@ -1730,8 +1811,15 @@
         dischargeChart = null;
         clearWardInlineCharts();
         setSensorSectionsVisible(false);
-        await loadSensors();
-        if (shapeLayer) shapeLayer.setStyle(wardStyle);
+        showSensorLoading(`Loading ${sourceDisplayName()} sensors...`);
+        try {
+          await loadSensors();
+          if (shapeLayer) shapeLayer.setStyle(wardStyle);
+        } finally {
+          document.querySelectorAll('button[data-source]').forEach((item) => {
+            item.disabled = false;
+          });
+        }
       });
     });
 
