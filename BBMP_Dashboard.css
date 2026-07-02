@@ -775,6 +775,18 @@
       display: block;
     }
 
+    .mini-chart-empty {
+      height: 100%;
+      min-height: 180px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 18px;
+    }
+
     .detail-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
