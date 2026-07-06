@@ -830,14 +830,23 @@
     };
 
     const fullscreenRangeContext = (canvasId) => {
-      const match = String(canvasId || '').match(/^uidModeChart(\d+)$/);
-      if (!match) return null;
-      const index = Number(match[1]);
-      const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
-      const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
-      const mode = modeTabs?.querySelector('button.active')?.dataset.mode;
-      if (!['daily-level', 'daily-drop'].includes(mode) || !rangeTabs) return null;
-      return { index, rangeTabs };
+      const uidMatch = String(canvasId || '').match(/^uidModeChart(\d+)$/);
+      if (uidMatch) {
+        const index = Number(uidMatch[1]);
+        const modeTabs = document.querySelector(`.uid-mode-tabs[data-uid-index="${index}"]`);
+        const rangeTabs = document.querySelector(`.uid-range-tabs[data-uid-index="${index}"]`);
+        const mode = modeTabs?.querySelector('button.active')?.dataset.mode;
+        if (!['daily-level', 'daily-drop'].includes(mode) || !rangeTabs) return null;
+        return { index, rangeTabs };
+      }
+      const capacityMatch = String(canvasId || '').match(/^uidSpecificCapacityChart(\d+)$/);
+      if (capacityMatch) {
+        const index = Number(capacityMatch[1]);
+        const rangeTabs = document.querySelector(`.sc-range-tabs[data-sc-index="${index}"]`);
+        if (!rangeTabs) return null;
+        return { index, rangeTabs };
+      }
+      return null;
     };
 
     const updateFullscreenRangeControls = (canvasId) => {
@@ -1853,9 +1862,10 @@
           wardInlineCharts = wardInlineCharts.filter((chart) => chart !== canvas._chart);
           canvas._chart = null;
         }
-        const sessions = pointsForRange(sensor.sessions || [], range);
         const inverseMode = mode === 'inverse';
-        canvas._chart = renderWardLineChart(canvas, sessions.map((session) => shortDateTimeLabel(session.time || session.label)), [
+        const sessions = pointsForRange(sensor.sessions || [], range);
+        const labels = sessions.map((session) => shortDateTimeLabel(session.time || session.label));
+        canvas._chart = renderWardLineChart(canvas, labels, [
           {
             label: inverseMode ? 'Inverse specific capacity' : 'Specific capacity',
             data: sessions.map((session) => inverseMode ? session.inverseSpecificCapacitySPerM2 : session.specificCapacityM2s),
@@ -1869,8 +1879,8 @@
           yTitle: inverseMode ? 'Inverse Specific Capacity (s/m2)' : 'Specific Capacity (m2/s)',
           unit: inverseMode ? 's/m2' : 'm2/s',
           rotateXLabels: true,
-          autoSkipXLabels: true,
-          maxTicksLimit: 8
+          autoSkipXLabels: false,
+          maxTicksLimit: labels.length || 1
         });
       };
 
