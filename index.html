@@ -447,32 +447,13 @@
       };
     };
     const neutralWardStyle = () => ({
-      color: '#64748b',
-      weight: 1,
-      opacity: 0.55,
+      color: '#0f172a',
+      weight: 2,
+      opacity: 0.95,
       fillColor: '#ffffff',
       fillOpacity: 0
     });
-    const wardStyle = (feature) => {
-      const props = feature.properties || {};
-      const stats = dropStatsForProps(props);
-      const avgDrop = Number(stats.avg);
-      const hasDrop = Number.isFinite(avgDrop);
-      if (!hasDrop) {
-        return neutralWardStyle();
-      }
-      if (avgDrop === 0) {
-        return neutralWardStyle();
-      }
-      const color = avgDrop > 0 ? '#7f0000' : '#004d1a';
-      return {
-        color,
-        weight: 1,
-        opacity: 1,
-        fillColor: color,
-        fillOpacity: 0.9
-      };
-    };
+    const wardStyle = () => neutralWardStyle();
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
     const hasValidLocation = (sensor) => {
       if (!hasCoordinateValue(sensor.lat) || !hasCoordinateValue(sensor.lng)) return false;
@@ -942,8 +923,9 @@
               label(context) {
                 const value = context.parsed.y;
                 const unit = context.dataset.unit || 'ft';
+                const decimals = unit === 'm2/s' ? 8 : 2;
                 return Number.isFinite(value)
-                  ? `${context.dataset.label}: ${value.toFixed(2)} ${unit}`
+                  ? `${context.dataset.label}: ${value.toFixed(decimals)} ${unit}`
                   : `${context.dataset.label}: N/A`;
               }
             }
@@ -1195,7 +1177,8 @@
             borderWidth: 2,
             pointRadius: 2,
             pointHoverRadius: 4,
-            tension: 0.25
+            tension: 0.25,
+            unit: options.unit || ''
           }]
         },
         options: {
@@ -1276,7 +1259,8 @@
                     return `${context.dataset.label}: N/A`;
                   }
 
-                  return `${context.dataset.label}: ${value.toFixed(2)} ft`;
+                  const unit = context.dataset.unit || options.unit || '';
+                  return `${context.dataset.label}: ${value.toFixed(2)}${unit ? ` ${unit}` : ''}`;
                 }
               }
             }
@@ -1649,7 +1633,9 @@
     };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
-      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const decimals = options.unit === 'm2/s' ? 8 : 2;
+      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(decimals)) : null;
+      const tooltipDecimals = options.unit === 'm2/s' ? 8 : 2;
       const rotateLabels = Boolean(options.rotateXLabels) || (options.autoRotateXLabels && labels.length > 10);
       const chart = new Chart(canvas, {
         type: 'line',
@@ -1705,7 +1691,7 @@
                 label(context) {
                   const value = context.parsed.y;
                   const unit = context.dataset.unit || options.unit || 'ft';
-                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(2)} ${unit}` : `${context.dataset.label}: N/A`;
+                  return Number.isFinite(value) ? `${context.dataset.label}: ${value.toFixed(tooltipDecimals)} ${unit}` : `${context.dataset.label}: N/A`;
                 }
               }
             }
@@ -1716,7 +1702,7 @@
       return chart;
     };
 
-    const buildWardDetailHtml = (props, wardData, localWardSensors) => {
+    const buildWardDetailHtml = (props, wardData, localWardSensors, specificCapacityData = null) => {
       const count = props._sensorCount || 0;
       const goodSensors = wardData ? (wardData.goodSensors || 0) : localWardSensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length;
       const omittedGoodUids = wardData?.noWeeklyDataUids || [];
@@ -1764,6 +1750,20 @@
       const omittedNote = omittedGoodUids.length
         ? `<div class="ward-note">${omittedGoodUids.length} sensor(s) passed QC but are excluded from GOOD Sensors because they have no valid cleaned groundwater levels to plot after removing zero readings and outliers: ${omittedGoodUids.join(', ')}</div>`
         : '';
+      const capacitySensors = specificCapacityData?.sensors || [];
+      const capacityWard = specificCapacityData?.ward || {};
+      const capacityPanels = capacitySensors.map((sensor, index) => `
+        <details class="uid-chart-card">
+          <summary>
+            <span>${sensor.uid}</span>
+            <small>Avg ${formatNumber(sensor.averageSpecificCapacityM2s, 8)} | Max ${formatNumber(sensor.maxSpecificCapacityM2s, 8)} m2/s</small>
+          </summary>
+          <div class="mini-chart-wrap">
+            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
+            <canvas id="uidSpecificCapacityChart${index}"></canvas>
+          </div>
+        </details>
+      `).join('');
 
       return `
         <section class="ward-summary-grid">
@@ -1778,6 +1778,19 @@
         ${dropNote}
         ${omittedNote}
         <section class="ward-explain">
+          <h3>Specific Capacity</h3>
+          <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download this ward Excel</button>
+          ${capacitySensors.length ? `
+            <div class="ward-note">
+              Average: ${formatNumber(capacityWard.averageSpecificCapacityM2s, 8)} m2/s | Maximum: ${formatNumber(capacityWard.maxSpecificCapacityM2s, 8)} m2/s
+            </div>
+          ` : ''}
+          ${capacitySensors.length
+            ? '<div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardSpecificCapacityChart" data-chart-title="Ward Specific Capacity by UID" type="button">Expand</button><canvas id="wardSpecificCapacityChart"></canvas></div>'
+            : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>'}
+          ${capacityPanels ? `<div class="uid-chart-list">${capacityPanels}</div>` : ''}
+        </section>
+        <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           ${hasWardWeeklyData
             ? '<div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>'
@@ -1791,8 +1804,48 @@
       `;
     };
 
-    const renderWardDetailCharts = (wardData) => {
+    const renderSpecificCapacityCharts = (specificCapacityData) => {
+      const sensorsWithCapacity = specificCapacityData?.sensors || [];
+      const wardCanvas = document.getElementById('wardSpecificCapacityChart');
+      if (wardCanvas && sensorsWithCapacity.length) {
+        const labels = sensorsWithCapacity.map((sensor) => sensor.uid);
+        renderWardLineChart(wardCanvas, labels, [
+          {
+            label: 'Average specific capacity',
+            data: sensorsWithCapacity.map((sensor) => sensor.averageSpecificCapacityM2s),
+            borderColor: '#244e9a',
+            showLine: false,
+            unit: 'm2/s'
+          },
+          {
+            label: 'Maximum specific capacity',
+            data: sensorsWithCapacity.map((sensor) => sensor.maxSpecificCapacityM2s),
+            borderColor: '#b91c1c',
+            showLine: false,
+            unit: 'm2/s'
+          }
+        ], { showLine: false, reverseY: false, yTitle: 'Specific Capacity (m2/s)', unit: 'm2/s', rotateXLabels: true });
+      }
+
+      sensorsWithCapacity.forEach((sensor, index) => {
+        const canvas = document.getElementById(`uidSpecificCapacityChart${index}`);
+        if (!canvas) return;
+        const sessions = sensor.sessions || [];
+        canvas._chart = renderWardLineChart(canvas, sessions.map((session) => session.label), [
+          {
+            label: 'Specific capacity',
+            data: sessions.map((session) => session.specificCapacityM2s),
+            borderColor: '#0f8f4d',
+            showLine: false,
+            unit: 'm2/s'
+          }
+        ], { showLine: false, reverseY: false, yTitle: 'Specific Capacity (m2/s)', unit: 'm2/s', rotateXLabels: true });
+      });
+    };
+
+    const renderWardDetailCharts = (wardData, specificCapacityData = null) => {
       clearWardInlineCharts();
+      renderSpecificCapacityCharts(specificCapacityData);
       if (!wardData) return;
       const labels = (wardData.weekly || []).map((point) => point.label);
       const wardCanvas = document.getElementById('wardWeeklyChart');
@@ -2022,15 +2075,19 @@
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
+        const [response, capacityResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`),
+          fetch(`${API_BASE_URL}/api/specific-capacity/ward?ward_no=${encodeURIComponent(selectedWardNo)}`)
+        ]);
         const payload = response.ok ? await response.json() : { ward: null };
+        const capacityPayload = capacityResponse.ok ? await capacityResponse.json() : { ward: null, sensors: [] };
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
-        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors);
-        renderWardDetailCharts(wardData);
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
+        renderWardDetailCharts(wardData, capacityPayload);
       } catch (error) {
         const wardData = wardWeeklyByNo.get(selectedWardNo) || null;
-        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors);
-        renderWardDetailCharts(wardData);
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, null);
+        renderWardDetailCharts(wardData, null);
         showToast(`Could not load ward weekly data for ward ${selectedWardNo}.`);
       }
     };
@@ -2045,7 +2102,7 @@
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
         <button class="legend-row" data-filter="discharge" type="button"><span class="dot" style="background:#f59e0b"></span>Discharge only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
-        <div class="legend-note">Ward polygons: red = dropping, green = recovering.</div>
+        <div class="legend-note">Ward polygons are shown as dark boundaries only.</div>
       `;
       return div;
     };
@@ -2123,6 +2180,12 @@
     });
     els.downloadSpecificCapacity.addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx`, '_blank', 'noopener');
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('.ward-specific-capacity-download');
+      if (!button) return;
+      const wardNo = button.dataset.wardNo;
+      window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx?ward_no=${encodeURIComponent(wardNo)}`, '_blank', 'noopener');
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
