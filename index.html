@@ -531,8 +531,10 @@
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
         <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
         ${capacity ? `
-          <div><strong>Avg SC:</strong> ${formatNumber(capacity.averageSpecificCapacityM2s, 8)} m2/s</div>
-          <div><strong>Avg inverse SC:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 2)} s/m2</div>
+          <div><strong>Average specific capacity:</strong> ${formatNumber(capacity.averageSpecificCapacityM2s, 8)} m2/s</div>
+          <div><strong>Maximum specific capacity:</strong> ${formatNumber(capacity.maxSpecificCapacityM2s, 8)} m2/s</div>
+          <div><strong>Average inverse specific capacity:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 2)} s/m2</div>
+          <div><strong>Maximum inverse specific capacity:</strong> ${formatNumber(capacity.maxInverseSpecificCapacitySPerM2, 2)} s/m2</div>
         ` : ''}
         <div class="popup-hint">Click ward for full details.</div>
       `;
@@ -1778,14 +1780,21 @@
             <small>Avg ${formatNumber(sensor.averageSpecificCapacityM2s, 8)} m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
-            ${wardMetric('Avg SC', `${formatNumber(sensor.averageSpecificCapacityM2s, 8)} m2/s`)}
-            ${wardMetric('Max SC', `${formatNumber(sensor.maxSpecificCapacityM2s, 8)} m2/s`)}
-            ${wardMetric('Avg Inv SC', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
+            ${wardMetric('Average Specific Capacity', `${formatNumber(sensor.averageSpecificCapacityM2s, 8)} m2/s`)}
+            ${wardMetric('Maximum Specific Capacity', `${formatNumber(sensor.maxSpecificCapacityM2s, 8)} m2/s`)}
+            ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
+            ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
           </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
-            <button type="button" class="active" data-sc-mode="sc">SC</button>
-            <button type="button" data-sc-mode="inverse">Inverse SC</button>
+            <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
+            <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
+          </div>
+          <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
+            <button type="button" data-range="week">Last Week</button>
+            <button type="button" data-range="month">Last Month</button>
+            <button type="button" data-range="three">3 Months</button>
+            <button type="button" class="active" data-range="all">All Time</button>
           </div>
           <div class="mini-chart-wrap">
             <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
@@ -1801,7 +1810,6 @@
           ${wardMetric('Not Usable', formatNumber(notUsable))}
           ${wardMetric('GOOD Sensor %', goodPercent)}
           ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
-          ${wardMetric('Median Drop/day', formatTrend(medianDrop, 'ft/day', 2), dropClass)}
           ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
         </section>
         ${dropNote}
@@ -1811,12 +1819,12 @@
           <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download this ward Excel</button>
           ${capacitySensors.length ? `
             <div class="ward-summary-grid compact">
-              ${wardMetric('SC UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
-              ${wardMetric('SC Sessions', formatNumber(capacityWard.validSessions || 0))}
-              ${wardMetric('Avg SC', `${formatNumber(capacityWard.averageSpecificCapacityM2s, 8)} m2/s`)}
-              ${wardMetric('Max SC', `${formatNumber(capacityWard.maxSpecificCapacityM2s, 8)} m2/s`)}
-              ${wardMetric('Avg Inv SC', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
-              ${wardMetric('Max Inv SC', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 2)} s/m2`)}
+              ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
+              ${wardMetric('Specific Capacity Sessions', formatNumber(capacityWard.validSessions || 0))}
+              ${wardMetric('Average Specific Capacity', `${formatNumber(capacityWard.averageSpecificCapacityM2s, 8)} m2/s`)}
+              ${wardMetric('Maximum Specific Capacity', `${formatNumber(capacityWard.maxSpecificCapacityM2s, 8)} m2/s`)}
+              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
+              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 2)} s/m2`)}
             </div>
           ` : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>'}
           ${capacityPanels ? `<div class="uid-chart-list">${capacityPanels}</div>` : ''}
@@ -1837,7 +1845,7 @@
 
     const renderSpecificCapacityCharts = (specificCapacityData) => {
       const sensorsWithCapacity = specificCapacityData?.sensors || [];
-      const drawSpecificCapacityChart = (sensor, index, mode = 'sc') => {
+      const drawSpecificCapacityChart = (sensor, index, mode = 'specific', range = 'all') => {
         const canvas = document.getElementById(`uidSpecificCapacityChart${index}`);
         if (!canvas) return;
         if (canvas._chart) {
@@ -1845,7 +1853,7 @@
           wardInlineCharts = wardInlineCharts.filter((chart) => chart !== canvas._chart);
           canvas._chart = null;
         }
-        const sessions = sensor.sessions || [];
+        const sessions = pointsForRange(sensor.sessions || [], range);
         const inverseMode = mode === 'inverse';
         canvas._chart = renderWardLineChart(canvas, sessions.map((session) => shortDateTimeLabel(session.time || session.label)), [
           {
@@ -1867,8 +1875,18 @@
       };
 
       sensorsWithCapacity.forEach((sensor, index) => {
-        drawSpecificCapacityChart(sensor, index, 'sc');
+        drawSpecificCapacityChart(sensor, index, 'specific', 'all');
       });
+
+      const redrawSpecificCapacityChart = (index) => {
+        const sensor = sensorsWithCapacity[index];
+        if (!sensor) return;
+        const modeTabs = document.querySelector(`.sc-toggle[data-sc-index="${index}"]`);
+        const rangeTabs = document.querySelector(`.sc-range-tabs[data-sc-index="${index}"]`);
+        const mode = modeTabs?.querySelector('button.active')?.dataset.scMode || 'specific';
+        const range = rangeTabs?.querySelector('button.active')?.dataset.range || 'all';
+        drawSpecificCapacityChart(sensor, index, mode, range);
+      };
 
       document.querySelectorAll('.sc-toggle').forEach((tabs) => {
         const index = Number(tabs.dataset.scIndex);
@@ -1876,8 +1894,19 @@
           button.addEventListener('click', () => {
             tabs.querySelectorAll('button[data-sc-mode]').forEach((item) => item.classList.remove('active'));
             button.classList.add('active');
-            const sensor = sensorsWithCapacity[index];
-            if (sensor) drawSpecificCapacityChart(sensor, index, button.dataset.scMode);
+            redrawSpecificCapacityChart(index);
+            refreshFullscreenChart();
+          });
+        });
+      });
+
+      document.querySelectorAll('.sc-range-tabs').forEach((tabs) => {
+        const index = Number(tabs.dataset.scIndex);
+        tabs.querySelectorAll('button[data-range]').forEach((button) => {
+          button.addEventListener('click', () => {
+            tabs.querySelectorAll('button[data-range]').forEach((item) => item.classList.remove('active'));
+            button.classList.add('active');
+            redrawSpecificCapacityChart(index);
             refreshFullscreenChart();
           });
         });
