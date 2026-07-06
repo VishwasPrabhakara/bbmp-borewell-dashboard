@@ -959,9 +959,18 @@
       };
       const labelCount = sourceData.labels.length;
       const denseChartWidth = labelCount > 40
-        ? Math.min(Math.max(labelCount * 18, 1500), 4200)
+        ? Math.min(Math.max(labelCount * 54, 1800), 9000)
         : 0;
+      els.chartFullscreenCanvas.classList.toggle('dense-x-axis', Boolean(denseChartWidth));
+      els.chartFullscreenCanvas.style.width = denseChartWidth ? `${denseChartWidth}px` : '';
       els.chartFullscreenCanvas.style.minWidth = denseChartWidth ? `${denseChartWidth}px` : '';
+      if (denseChartWidth) {
+        const denseChartHeight = Math.max(560, Math.round(window.innerHeight * 0.72));
+        els.chartFullscreenCanvas.width = denseChartWidth;
+        els.chartFullscreenCanvas.height = denseChartHeight;
+        els.chartFullscreenCanvas.style.height = `${denseChartHeight}px`;
+        sourceOptions.responsive = false;
+      }
       sourceData.datasets = (sourceData.datasets || []).map((dataset) => ({
         ...dataset,
         pointRadius: Math.max(Number(dataset.pointRadius ?? 3), 6),
@@ -981,7 +990,12 @@
       fullscreenChart?.destroy();
       fullscreenChart = null;
       fullscreenSource = null;
+      els.chartFullscreenCanvas.classList.remove('dense-x-axis');
+      els.chartFullscreenCanvas.style.width = '';
       els.chartFullscreenCanvas.style.minWidth = '';
+      els.chartFullscreenCanvas.style.height = '';
+      els.chartFullscreenCanvas.removeAttribute('width');
+      els.chartFullscreenCanvas.removeAttribute('height');
       els.chartFullscreen.classList.remove('open');
       els.chartFullscreen.setAttribute('aria-hidden', 'true');
       els.chartFullscreenControls.style.display = 'none';
