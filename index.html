@@ -531,10 +531,10 @@
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
         <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
         ${capacity ? `
-          <div><strong>Average specific capacity:</strong> ${formatNumber(capacity.averageSpecificCapacityM2s, 8)} m2/s</div>
-          <div><strong>Maximum specific capacity:</strong> ${formatNumber(capacity.maxSpecificCapacityM2s, 8)} m2/s</div>
-          <div><strong>Average inverse specific capacity:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 2)} s/m2</div>
-          <div><strong>Maximum inverse specific capacity:</strong> ${formatNumber(capacity.maxInverseSpecificCapacitySPerM2, 2)} s/m2</div>
+          <div><strong>Average specific capacity:</strong> ${formatNumber(capacity.averageSpecificCapacityM2s, 4)} m2/s</div>
+          <div><strong>Maximum specific capacity:</strong> ${formatNumber(capacity.maxSpecificCapacityM2s, 4)} m2/s</div>
+          <div><strong>Average inverse specific capacity:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 0)} s/m2</div>
+          <div><strong>Maximum inverse specific capacity:</strong> ${formatNumber(capacity.maxInverseSpecificCapacitySPerM2, 0)} s/m2</div>
         ` : ''}
         <div class="popup-hint">Click ward for full details.</div>
       `;
@@ -941,7 +941,7 @@
               label(context) {
                 const value = context.parsed.y;
                 const unit = context.dataset.unit || 'ft';
-                const decimals = unit === 'm2/s' ? 8 : 2;
+                const decimals = unit === 'm2/s' ? 4 : unit === 's/m2' ? 0 : 2;
                 return Number.isFinite(value)
                   ? `${context.dataset.label}: ${value.toFixed(decimals)} ${unit}`
                   : `${context.dataset.label}: N/A`;
@@ -957,6 +957,11 @@
           data: [...(dataset.data || [])]
         }))
       };
+      const labelCount = sourceData.labels.length;
+      const denseChartWidth = labelCount > 40
+        ? Math.min(Math.max(labelCount * 18, 1500), 4200)
+        : 0;
+      els.chartFullscreenCanvas.style.minWidth = denseChartWidth ? `${denseChartWidth}px` : '';
       sourceData.datasets = (sourceData.datasets || []).map((dataset) => ({
         ...dataset,
         pointRadius: Math.max(Number(dataset.pointRadius ?? 3), 6),
@@ -976,6 +981,7 @@
       fullscreenChart?.destroy();
       fullscreenChart = null;
       fullscreenSource = null;
+      els.chartFullscreenCanvas.style.minWidth = '';
       els.chartFullscreen.classList.remove('open');
       els.chartFullscreen.setAttribute('aria-hidden', 'true');
       els.chartFullscreenControls.style.display = 'none';
@@ -1662,9 +1668,9 @@
     };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
-      const decimals = options.unit === 'm2/s' ? 8 : 2;
+      const decimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
       const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(decimals)) : null;
-      const tooltipDecimals = options.unit === 'm2/s' ? 8 : 2;
+      const tooltipDecimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
       const rotateLabels = Boolean(options.rotateXLabels) || (options.autoRotateXLabels && labels.length > 10);
       const chart = new Chart(canvas, {
         type: 'line',
@@ -1786,12 +1792,12 @@
         <details class="uid-chart-card">
           <summary>
             <span>${sensor.uid}</span>
-            <small>Avg ${formatNumber(sensor.averageSpecificCapacityM2s, 8)} m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
+            <small>Avg ${formatNumber(sensor.averageSpecificCapacityM2s, 4)} m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
-            ${wardMetric('Average Specific Capacity', `${formatNumber(sensor.averageSpecificCapacityM2s, 8)} m2/s`)}
-            ${wardMetric('Maximum Specific Capacity', `${formatNumber(sensor.maxSpecificCapacityM2s, 8)} m2/s`)}
-            ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
+            ${wardMetric('Average Specific Capacity', `${formatNumber(sensor.averageSpecificCapacityM2s, 4)} m2/s`)}
+            ${wardMetric('Maximum Specific Capacity', `${formatNumber(sensor.maxSpecificCapacityM2s, 4)} m2/s`)}
+            ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
           </div>
@@ -1800,10 +1806,10 @@
             <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
           </div>
           <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
-            <button type="button" data-range="week">Last Week</button>
+            <button type="button" class="active" data-range="week">Last Week</button>
             <button type="button" data-range="month">Last Month</button>
             <button type="button" data-range="three">3 Months</button>
-            <button type="button" class="active" data-range="all">All Time</button>
+            <button type="button" data-range="all">All Time</button>
           </div>
           <div class="mini-chart-wrap">
             <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
@@ -1830,10 +1836,10 @@
             <div class="ward-summary-grid compact">
               ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
               ${wardMetric('Specific Capacity Sessions', formatNumber(capacityWard.validSessions || 0))}
-              ${wardMetric('Average Specific Capacity', `${formatNumber(capacityWard.averageSpecificCapacityM2s, 8)} m2/s`)}
-              ${wardMetric('Maximum Specific Capacity', `${formatNumber(capacityWard.maxSpecificCapacityM2s, 8)} m2/s`)}
-              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 2)} s/m2`)}
-              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 2)} s/m2`)}
+              ${wardMetric('Average Specific Capacity', `${formatNumber(capacityWard.averageSpecificCapacityM2s, 4)} m2/s`)}
+              ${wardMetric('Maximum Specific Capacity', `${formatNumber(capacityWard.maxSpecificCapacityM2s, 4)} m2/s`)}
+              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             </div>
           ` : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>'}
           ${capacityPanels ? `<div class="uid-chart-list">${capacityPanels}</div>` : ''}
@@ -1885,7 +1891,7 @@
       };
 
       sensorsWithCapacity.forEach((sensor, index) => {
-        drawSpecificCapacityChart(sensor, index, 'specific', 'all');
+        drawSpecificCapacityChart(sensor, index, 'specific', 'week');
       });
 
       const redrawSpecificCapacityChart = (index) => {

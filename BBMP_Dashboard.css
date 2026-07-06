@@ -983,7 +983,7 @@
       z-index: 3000;
       display: none;
       background: rgba(8, 15, 23, 0.78);
-      padding: 22px;
+      padding: 10px;
     }
 
     .chart-fullscreen.open {
@@ -992,14 +992,16 @@
     }
 
     .chart-fullscreen-panel {
-      width: min(96vw, 1500px);
-      height: min(92vh, 920px);
+      width: 99vw;
+      height: 96vh;
       border-radius: 8px;
       background: #fff;
       box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
       display: grid;
       grid-template-rows: auto auto minmax(0, 1fr);
-      padding: 16px 18px 20px;
+      padding: 12px 14px 16px;
+      overflow-x: auto;
+      overflow-y: hidden;
     }
 
     .chart-fullscreen-head {
