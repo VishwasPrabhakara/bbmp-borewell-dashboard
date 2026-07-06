@@ -88,6 +88,7 @@
           <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
           <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels Excel</button>
           <button id="downloadNotUsableCsv" class="primary" type="button">Not Usable Excel</button>
+          <button id="downloadSpecificCapacity" class="primary" type="button">Specific Capacity Excel</button>
         </div>
       </section>
 
@@ -237,6 +238,7 @@
       exportFiltered: document.getElementById('exportFiltered'),
       downloadWeeklyLevelsCsv: document.getElementById('downloadWeeklyLevelsCsv'),
       downloadNotUsableCsv: document.getElementById('downloadNotUsableCsv'),
+      downloadSpecificCapacity: document.getElementById('downloadSpecificCapacity'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -2118,6 +2120,9 @@
     });
     els.downloadNotUsableCsv.addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/qc/not-usable-sensors.xlsx`, '_blank', 'noopener');
+    });
+    els.downloadSpecificCapacity.addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx`, '_blank', 'noopener');
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
