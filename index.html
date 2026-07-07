@@ -194,6 +194,7 @@
     }).addTo(map);
 
     let shapeLayer = null;
+    let lakeLayer = null;
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
     let sensors = [];
@@ -1019,6 +1020,47 @@
         }
       }).addTo(map);
       map.fitBounds(shapeLayer.getBounds().pad(0.08));
+      await drawLakeFile();
+    };
+
+    const lakeName = (feature) => {
+      const props = feature?.properties || {};
+      return props.Name || props.name || props.LAKE_NAME || props.lake_name || '';
+    };
+
+    const drawLakeFile = async () => {
+      const response = await fetch('Lakes_final.zip');
+      if (!response.ok) throw new Error(`Could not load Lakes_final.zip: HTTP ${response.status}`);
+      const geojson = await shp(await response.arrayBuffer());
+      const lakeFeatures = flattenGeoJsonFeatures(geojson);
+      if (lakeLayer) map.removeLayer(lakeLayer);
+      lakeLayer = L.geoJSON({ type: 'FeatureCollection', features: lakeFeatures }, {
+        style: {
+          color: '#0f6f9f',
+          weight: 1.2,
+          opacity: 0.9,
+          fillColor: '#53b7e8',
+          fillOpacity: 0.35
+        },
+        onEachFeature: (feature, layer) => {
+          const name = lakeName(feature);
+          const wardNo = feature?.properties?.WARD_NO;
+          const wardName = feature?.properties?.WARD_NAME;
+          if (name) {
+            layer.bindTooltip(name, {
+              permanent: true,
+              direction: 'center',
+              className: 'lake-label'
+            });
+          }
+          layer.bindPopup(`
+            <strong>${name || 'Lake'}</strong><br>
+            Ward: ${wardNo || '-'} ${wardName ? `- ${wardName}` : ''}
+          `);
+        }
+      }).addTo(map);
+      lakeLayer.bringToFront();
+      sensorLayer.bringToFront();
     };
 
     const applySharedDashboardData = (consumptionPayload = { wards: [] }, populationPayload = { wards: [] }) => {
@@ -1478,7 +1520,7 @@
       if (offLevels.length || onLevels.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
           {
-            label: 'Level path',
+            label: 'Cleaned level path',
             data: points.map((point) => Number.isFinite(point.waterLevel) ? point.waterLevel : null),
             borderColor: '#4b5563',
             borderDash: [6, 5],
@@ -1491,12 +1533,24 @@
           {
             label: 'Off level',
             data: points.map((point) => Number.isFinite(point.offLevel) ? point.offLevel : null),
-            borderColor: '#244e9a'
+            borderColor: 'rgba(0,0,0,0)',
+            pointBorderColor: '#244e9a',
+            pointBackgroundColor: '#244e9a',
+            borderWidth: 0,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            showLine: false
           },
           {
             label: 'On level',
             data: points.map((point) => Number.isFinite(point.onLevel) ? point.onLevel : null),
-            borderColor: '#008a3d'
+            borderColor: 'rgba(0,0,0,0)',
+            pointBorderColor: '#008a3d',
+            pointBackgroundColor: '#008a3d',
+            borderWidth: 0,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            showLine: false
           }
         ], {
           reverseY: true,
@@ -1995,19 +2049,37 @@
             {
               label: 'Water level',
               data: daily.map((point) => point.onLevel == null && point.offLevel == null ? point.primaryLevel : null),
-              borderColor: '#111827',
+              borderColor: 'rgba(0,0,0,0)',
+              pointBorderColor: '#111827',
+              pointBackgroundColor: '#111827',
+              borderWidth: 0,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              showLine: false,
               unit: 'ft'
             },
             {
               label: 'Off level',
               data: daily.map((point) => point.offLevel),
-              borderColor: '#244e9a',
+              borderColor: 'rgba(0,0,0,0)',
+              pointBorderColor: '#244e9a',
+              pointBackgroundColor: '#244e9a',
+              borderWidth: 0,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              showLine: false,
               unit: 'ft'
             },
             {
               label: 'On level',
               data: daily.map((point) => point.onLevel),
-              borderColor: '#0f8f4d',
+              borderColor: 'rgba(0,0,0,0)',
+              pointBorderColor: '#0f8f4d',
+              pointBackgroundColor: '#0f8f4d',
+              borderWidth: 0,
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              showLine: false,
               unit: 'ft'
             }
           ], { yTitle: 'Feet below surface', unit: 'ft', rotateXLabels: true });

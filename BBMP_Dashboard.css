@@ -437,6 +437,21 @@
       height: 100%;
     }
 
+    .lake-label {
+      border: 0;
+      box-shadow: none;
+      background: transparent;
+      color: #075985;
+      font-size: 11px;
+      font-weight: 800;
+      text-shadow:
+        -1px -1px 0 rgba(255,255,255,0.9),
+        1px -1px 0 rgba(255,255,255,0.9),
+        -1px 1px 0 rgba(255,255,255,0.9),
+        1px 1px 0 rgba(255,255,255,0.9);
+      pointer-events: none;
+    }
+
     .marker-pin {
       width: 18px;
       height: 18px;
