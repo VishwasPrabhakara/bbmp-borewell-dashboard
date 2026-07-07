@@ -1036,11 +1036,11 @@
       if (lakeLayer) map.removeLayer(lakeLayer);
       lakeLayer = L.geoJSON({ type: 'FeatureCollection', features: lakeFeatures }, {
         style: {
-          color: '#0f6f9f',
+          color: 'rgba(0,0,0,0.45)',
           weight: 1.2,
-          opacity: 0.9,
+          opacity: 1,
           fillColor: '#53b7e8',
-          fillOpacity: 0.35
+          fillOpacity: 0.22
         },
         onEachFeature: (feature, layer) => {
           const name = lakeName(feature);
@@ -1048,8 +1048,7 @@
           const wardName = feature?.properties?.WARD_NAME;
           if (name) {
             layer.bindTooltip(name, {
-              permanent: true,
-              direction: 'center',
+              sticky: true,
               className: 'lake-label'
             });
           }
