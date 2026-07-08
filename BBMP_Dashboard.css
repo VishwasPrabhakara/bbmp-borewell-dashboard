@@ -437,19 +437,15 @@
       height: 100%;
     }
 
-    .lake-label {
-      border: 0;
-      box-shadow: none;
-      background: transparent;
-      color: #075985;
-      font-size: 11px;
+    .lake-tooltip {
+      border: 1px solid rgba(15, 23, 42, 0.18);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+      background: rgba(255, 255, 255, 0.96);
+      color: #0f172a;
+      font-size: 12px;
       font-weight: 800;
-      text-shadow:
-        -1px -1px 0 rgba(255,255,255,0.9),
-        1px -1px 0 rgba(255,255,255,0.9),
-        -1px 1px 0 rgba(255,255,255,0.9),
-        1px 1px 0 rgba(255,255,255,0.9);
-      pointer-events: none;
+      padding: 5px 8px;
+      border-radius: 6px;
     }
 
     .marker-pin {

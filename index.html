@@ -1036,11 +1036,11 @@
       if (lakeLayer) map.removeLayer(lakeLayer);
       lakeLayer = L.geoJSON({ type: 'FeatureCollection', features: lakeFeatures }, {
         style: {
-          color: 'rgba(0,0,0,0.45)',
-          weight: 1.2,
+          color: 'rgba(0,0,0,0.62)',
+          weight: 1.5,
           opacity: 1,
-          fillColor: '#53b7e8',
-          fillOpacity: 0.22
+          fillColor: '#38a9dc',
+          fillOpacity: 0.38
         },
         onEachFeature: (feature, layer) => {
           const name = lakeName(feature);
@@ -1049,7 +1049,7 @@
           if (name) {
             layer.bindTooltip(name, {
               sticky: true,
-              className: 'lake-label'
+              className: 'lake-tooltip'
             });
           }
           layer.bindPopup(`
@@ -2280,7 +2280,6 @@
         <div class="legend-title">Sensor data</div>
         <button class="legend-row" data-filter="both" type="button"><span class="dot" style="background:#007a3d"></span>WL + discharge</button>
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
-        <button class="legend-row" data-filter="discharge" type="button"><span class="dot" style="background:#f59e0b"></span>Discharge only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-note">Ward polygons are shown as dark boundaries only.</div>
       `;
