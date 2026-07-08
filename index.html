@@ -330,6 +330,12 @@
       if (!Number.isFinite(number)) return value || '-';
       return number.toLocaleString('en-IN', { maximumFractionDigits: decimals });
     };
+    const scaledTransmissivity = (scaledValue, rawValue) => {
+      const scaled = Number(scaledValue);
+      if (Number.isFinite(scaled)) return scaled;
+      const raw = Number(rawValue);
+      return Number.isFinite(raw) ? raw * 1000000 : null;
+    };
     const formatTrend = (value, unit, decimals = 2) => value == null ? '-' : `${formatNumber(value, decimals)} ${unit}`;
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const formatDateTime = (value) => {
@@ -1867,18 +1873,18 @@
         <details class="uid-chart-card">
           <summary>
             <span>${sensor.uid}</span>
-            <small>Avg ${formatNumber(sensor.averageSpecificCapacityM2s, 4)} m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
+            <small>Avg ${formatNumber(scaledTransmissivity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
-            ${wardMetric('Average Specific Capacity', `${formatNumber(sensor.averageSpecificCapacityM2s, 4)} m2/s`)}
-            ${wardMetric('Maximum Specific Capacity', `${formatNumber(sensor.maxSpecificCapacityM2s, 4)} m2/s`)}
-            ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+            ${wardMetric('Average Transmissivity', `${formatNumber(scaledTransmissivity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+            ${wardMetric('Maximum Transmissivity', `${formatNumber(scaledTransmissivity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+            ${wardMetric('Average Inverse Transmissivity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
           </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
-            <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
-            <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
+            <button type="button" class="active" data-sc-mode="specific">Transmissivity</button>
+            <button type="button" data-sc-mode="inverse">Inverse Transmissivity</button>
           </div>
           <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
             <button type="button" class="active" data-range="week">Last Week</button>
@@ -1887,7 +1893,7 @@
             <button type="button" data-range="all">All Time</button>
           </div>
           <div class="mini-chart-wrap">
-            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
+            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Transmissivity" type="button">Expand</button>
             <canvas id="uidSpecificCapacityChart${index}"></canvas>
           </div>
         </details>
@@ -1905,16 +1911,16 @@
         ${dropNote}
         ${omittedNote}
         <section class="ward-explain">
-          <h3>Specific Capacity</h3>
+          <h3>Transmissivity</h3>
           <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download this ward Excel</button>
           ${capacitySensors.length ? `
             <div class="ward-summary-grid compact">
-              ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
-              ${wardMetric('Specific Capacity Sessions', formatNumber(capacityWard.validSessions || 0))}
-              ${wardMetric('Average Specific Capacity', `${formatNumber(capacityWard.averageSpecificCapacityM2s, 4)} m2/s`)}
-              ${wardMetric('Maximum Specific Capacity', `${formatNumber(capacityWard.maxSpecificCapacityM2s, 4)} m2/s`)}
-              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
-              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Transmissivity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
+              ${wardMetric('Transmissivity Sessions', formatNumber(capacityWard.validSessions || 0))}
+              ${wardMetric('Average Transmissivity', `${formatNumber(scaledTransmissivity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+              ${wardMetric('Maximum Transmissivity', `${formatNumber(scaledTransmissivity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+              ${wardMetric('Average Inverse Transmissivity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Maximum Inverse Transmissivity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             </div>
           ` : ''}
           ${capacityMissingNote}
@@ -1949,17 +1955,19 @@
         const labels = sessions.map((session) => shortDateTimeLabel(session.time || session.label));
         canvas._chart = renderWardLineChart(canvas, labels, [
           {
-            label: inverseMode ? 'Inverse specific capacity' : 'Specific capacity',
-            data: sessions.map((session) => inverseMode ? session.inverseSpecificCapacitySPerM2 : session.specificCapacityM2s),
+            label: inverseMode ? 'Inverse transmissivity' : 'Transmissivity',
+            data: sessions.map((session) => inverseMode
+              ? session.inverseSpecificCapacitySPerM2
+              : scaledTransmissivity(session.transmissivityScaled, session.specificCapacityM2s)),
             borderColor: '#0f8f4d',
             showLine: false,
-            unit: inverseMode ? 's/m2' : 'm2/s'
+            unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
           }
         ], {
           showLine: false,
           reverseY: false,
-          yTitle: inverseMode ? 'Inverse Specific Capacity (s/m2)' : 'Specific Capacity (m2/s)',
-          unit: inverseMode ? 's/m2' : 'm2/s',
+          yTitle: inverseMode ? 'Inverse Transmissivity (s/m2)' : 'Transmissivity (x10^-6 m2/s)',
+          unit: inverseMode ? 's/m2' : 'x10^-6 m2/s',
           rotateXLabels: true,
           autoSkipXLabels: false,
           maxTicksLimit: labels.length || 1
