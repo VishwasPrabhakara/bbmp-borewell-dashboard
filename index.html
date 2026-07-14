@@ -1770,13 +1770,37 @@
         }))
         .filter((point) => Number.isFinite(point.y));
       if (points.length < 2) {
-        return { slopeFtPerWeek: null, slopeFtPerDay: null, r2: null, trendData: weekly.map(() => null), pointCount: points.length };
+        return {
+          slopeFtPerWeek: null,
+          slopeFtPerDay: null,
+          r2: null,
+          senSlopeFtPerWeek: null,
+          senSlopeFtPerDay: null,
+          mannKendallS: null,
+          mannKendallZ: null,
+          mannKendallPValue: null,
+          mannKendallTrend: 'Not computed',
+          trendData: weekly.map(() => null),
+          pointCount: points.length
+        };
       }
       const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
       const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
       const denominator = points.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
       if (!denominator) {
-        return { slopeFtPerWeek: null, slopeFtPerDay: null, r2: null, trendData: weekly.map(() => null), pointCount: points.length };
+        return {
+          slopeFtPerWeek: null,
+          slopeFtPerDay: null,
+          r2: null,
+          senSlopeFtPerWeek: null,
+          senSlopeFtPerDay: null,
+          mannKendallS: null,
+          mannKendallZ: null,
+          mannKendallPValue: null,
+          mannKendallTrend: 'Not computed',
+          trendData: weekly.map(() => null),
+          pointCount: points.length
+        };
       }
       const slopeFtPerWeek = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / denominator;
       const intercept = meanY - (slopeFtPerWeek * meanX);
@@ -1786,10 +1810,52 @@
         return sum + ((point.y - expected) ** 2);
       }, 0);
       const validIndexes = new Set(points.map((point) => point.x));
+      const pairSlopes = [];
+      let mannKendallS = 0;
+      for (let i = 0; i < points.length - 1; i += 1) {
+        for (let j = i + 1; j < points.length; j += 1) {
+          const dx = points[j].x - points[i].x;
+          const dy = points[j].y - points[i].y;
+          if (dx > 0) pairSlopes.push(dy / dx);
+          mannKendallS += dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        }
+      }
+      const sortedSlopes = pairSlopes.slice().sort((a, b) => a - b);
+      const senSlope = sortedSlopes.length
+        ? sortedSlopes.length % 2
+          ? sortedSlopes[Math.floor(sortedSlopes.length / 2)]
+          : (sortedSlopes[(sortedSlopes.length / 2) - 1] + sortedSlopes[sortedSlopes.length / 2]) / 2
+        : null;
+      const tieCounts = new Map();
+      points.forEach((point) => {
+        const key = String(Number(point.y).toFixed(6));
+        tieCounts.set(key, (tieCounts.get(key) || 0) + 1);
+      });
+      const tieAdjustment = Array.from(tieCounts.values())
+        .filter((count) => count > 1)
+        .reduce((sum, count) => sum + count * (count - 1) * (2 * count + 5), 0);
+      const variance = (points.length * (points.length - 1) * ((2 * points.length) + 5) - tieAdjustment) / 18;
+      const mkZ = variance > 0
+        ? mannKendallS > 0 ? (mannKendallS - 1) / Math.sqrt(variance) : mannKendallS < 0 ? (mannKendallS + 1) / Math.sqrt(variance) : 0
+        : null;
+      const normalCdf = (value) => {
+        const sign = value < 0 ? -1 : 1;
+        const x = Math.abs(value) / Math.sqrt(2);
+        const t = 1 / (1 + 0.3275911 * x);
+        const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+        return 0.5 * (1 + sign * erf);
+      };
+      const mkP = Number.isFinite(mkZ) ? 2 * (1 - normalCdf(Math.abs(mkZ))) : null;
       return {
         slopeFtPerWeek,
         slopeFtPerDay: slopeFtPerWeek / 7,
         r2: totalSquares > 0 ? 1 - (residualSquares / totalSquares) : null,
+        senSlopeFtPerWeek: senSlope,
+        senSlopeFtPerDay: Number.isFinite(senSlope) ? senSlope / 7 : null,
+        mannKendallS,
+        mannKendallZ: mkZ,
+        mannKendallPValue: mkP,
+        mannKendallTrend: mannKendallS > 0 ? 'Increasing depth' : mannKendallS < 0 ? 'Decreasing depth' : 'No monotonic trend',
         trendData: weekly.map((_, index) => validIndexes.has(index) ? intercept + (slopeFtPerWeek * index) : null),
         pointCount: points.length
       };
@@ -1994,9 +2060,11 @@
           ${hasWardWeeklyData
             ? `
               <section class="ward-summary-grid compact slope-strip">
-                ${wardMetric('Slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
-                ${wardMetric('Slope/day', formatTrend(slopeFit.slopeFtPerDay, 'ft/day', 2), slopeClass(slopeFit.slopeFtPerWeek))}
-                ${wardMetric('Trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Linear slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Sen slope', formatTrend(slopeFit.senSlopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.senSlopeFtPerWeek))}
+                ${wardMetric('Mann-Kendall', slopeFit.mannKendallTrend || 'Not computed', slopeClass(slopeFit.mannKendallS))}
+                ${wardMetric('MK p-value', slopeFit.mannKendallPValue == null ? '-' : formatNumber(slopeFit.mannKendallPValue, 3))}
+                ${wardMetric('Visual trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
                 ${wardMetric('Points used', formatNumber(slopeFit.pointCount || 0))}
               </section>
               <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
