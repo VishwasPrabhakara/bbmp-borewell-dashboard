@@ -1761,6 +1761,46 @@
         hour12: false
       }).replace(',', '');
     };
+    const weeklySlopeFit = (weekly = []) => {
+      const points = weekly
+        .map((point, index) => ({
+          x: index,
+          label: point.label,
+          y: Number(point.averageLevel)
+        }))
+        .filter((point) => Number.isFinite(point.y));
+      if (points.length < 2) {
+        return { slopeFtPerWeek: null, slopeFtPerDay: null, r2: null, trendData: weekly.map(() => null), pointCount: points.length };
+      }
+      const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+      const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+      const denominator = points.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
+      if (!denominator) {
+        return { slopeFtPerWeek: null, slopeFtPerDay: null, r2: null, trendData: weekly.map(() => null), pointCount: points.length };
+      }
+      const slopeFtPerWeek = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / denominator;
+      const intercept = meanY - (slopeFtPerWeek * meanX);
+      const totalSquares = points.reduce((sum, point) => sum + ((point.y - meanY) ** 2), 0);
+      const residualSquares = points.reduce((sum, point) => {
+        const expected = intercept + (slopeFtPerWeek * point.x);
+        return sum + ((point.y - expected) ** 2);
+      }, 0);
+      const validIndexes = new Set(points.map((point) => point.x));
+      return {
+        slopeFtPerWeek,
+        slopeFtPerDay: slopeFtPerWeek / 7,
+        r2: totalSquares > 0 ? 1 - (residualSquares / totalSquares) : null,
+        trendData: weekly.map((_, index) => validIndexes.has(index) ? intercept + (slopeFtPerWeek * index) : null),
+        pointCount: points.length
+      };
+    };
+    const slopeClass = (slope) => Number(slope) > 0 ? 'bad' : Number(slope) < 0 ? 'good' : '';
+    const slopeLabel = (slope) => {
+      if (!Number.isFinite(Number(slope))) return 'Not computed';
+      if (Number(slope) > 0.1) return 'Declining';
+      if (Number(slope) < -0.1) return 'Improving';
+      return 'Mostly stable';
+    };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const decimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
@@ -1842,6 +1882,7 @@
       const avgDrop = wardData?.avgDropPerDay;
       const medianDrop = wardData?.medianDropPerDay;
       const maxDrop = wardData?.maxDropPerDay;
+      const slopeFit = weeklySlopeFit(wardData?.weekly || []);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
       const hasWardWeeklyData = (wardData?.weekly || []).some((point) =>
@@ -1951,7 +1992,15 @@
         <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           ${hasWardWeeklyData
-            ? '<div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>'
+            ? `
+              <section class="ward-summary-grid compact slope-strip">
+                ${wardMetric('Slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Slope/day', formatTrend(slopeFit.slopeFtPerDay, 'ft/day', 2), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Points used', formatNumber(slopeFit.pointCount || 0))}
+              </section>
+              <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
+            `
             : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
         </section>
         <section class="ward-explain">
@@ -2042,12 +2091,24 @@
       const labels = (wardData.weekly || []).map((point) => point.label);
       const wardCanvas = document.getElementById('wardWeeklyChart');
       if (wardCanvas) {
+        const slopeFit = weeklySlopeFit(wardData.weekly || []);
+        const slopeColor = Number(slopeFit.slopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.slopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
         renderWardLineChart(wardCanvas, labels, [
           {
             label: 'Average level',
             data: (wardData.weekly || []).map((point) => point.averageLevel),
             borderColor: '#244e9a',
             showLine: false
+          },
+          {
+            label: `Slope line (${formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2)})`,
+            data: slopeFit.trendData,
+            borderColor: slopeColor,
+            borderDash: [7, 5],
+            borderWidth: 3,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            showLine: true
           }
         ], { showLine: false, autoRotateXLabels: true });
       }
