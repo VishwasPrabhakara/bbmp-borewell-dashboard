@@ -89,6 +89,7 @@
           <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels Excel</button>
           <button id="downloadNotUsableCsv" class="primary" type="button">Not Usable Excel</button>
           <button id="downloadSpecificCapacity" class="primary" type="button">Specific Capacity Excel</button>
+          <button id="downloadCriticalGroundwater" class="primary" type="button">Critical GW Excel</button>
         </div>
       </section>
 
@@ -203,6 +204,7 @@
     let wardQcByName = new Map();
     let wardIndicatorsByName = new Map();
     let wardWeeklyByNo = new Map();
+    let criticalGroundwaterByNo = new Map();
     let consumptionByWardName = new Map();
     let consumptionByCanonicalName = new Map();
     let consumptionByWardNo = new Map();
@@ -241,6 +243,7 @@
       downloadWeeklyLevelsCsv: document.getElementById('downloadWeeklyLevelsCsv'),
       downloadNotUsableCsv: document.getElementById('downloadNotUsableCsv'),
       downloadSpecificCapacity: document.getElementById('downloadSpecificCapacity'),
+      downloadCriticalGroundwater: document.getElementById('downloadCriticalGroundwater'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -462,7 +465,20 @@
       fillColor: '#000000',
       fillOpacity: 0
     });
-    const wardStyle = () => neutralWardStyle();
+    const wardStyle = (feature) => {
+      const critical = criticalGroundwaterByNo.get(wardNumber(feature?.properties || {}));
+      if (currentDataSource === 'kh' && critical?.groundwaterStatus === 'Critical') {
+        return {
+          color: '#111827',
+          weight: 3,
+          opacity: 1,
+          fill: true,
+          fillColor: '#dc2626',
+          fillOpacity: 0.58
+        };
+      }
+      return neutralWardStyle();
+    };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
     const hasValidLocation = (sensor) => {
       if (!hasCoordinateValue(sensor.lat) || !hasCoordinateValue(sensor.lng)) return false;
@@ -530,9 +546,11 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const weekly = wardWeeklyForProps(props);
+      const criticalGw = criticalGroundwaterByNo.get(wardNumber(props));
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(wardNumber(props)));
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
+        ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -1100,6 +1118,7 @@
         wardQcPayload,
         indicatorsPayload,
         wardWeeklyPayload,
+        criticalGroundwaterPayload,
         consumptionPayload,
         populationPayload
       } = loaded;
@@ -1109,6 +1128,7 @@
       wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      criticalGroundwaterByNo = new Map((criticalGroundwaterPayload?.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       applySharedDashboardData(consumptionPayload, populationPayload);
       assignSensorsToWards();
       renderSensors();
@@ -1174,12 +1194,14 @@
         const wardQcPayload = wardQcResponse.ok ? await wardQcResponse.json() : { wards: [] };
         const indicatorsPayload = indicatorsResponse.ok ? await indicatorsResponse.json() : { wards: [] };
         const wardWeeklyPayload = wardWeeklyResponse.ok ? await wardWeeklyResponse.json() : { wards: [] };
+        const criticalGroundwaterPayload = { wards: wardWeeklyPayload.criticalGroundwater || [] };
         const loaded = {
           payload,
           qcPayload,
           wardQcPayload,
           indicatorsPayload,
           wardWeeklyPayload,
+          criticalGroundwaterPayload,
           consumptionPayload: shared.consumptionPayload,
           populationPayload: shared.populationPayload
         };
@@ -2367,6 +2389,9 @@
     });
     els.downloadSpecificCapacity.addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx`, '_blank', 'noopener');
+    });
+    els.downloadCriticalGroundwater.addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/critical-wards-groundwater.xlsx`, '_blank', 'noopener');
     });
     document.addEventListener('click', (event) => {
       const button = event.target.closest('.ward-specific-capacity-download');
