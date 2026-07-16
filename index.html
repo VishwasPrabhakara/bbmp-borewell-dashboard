@@ -139,6 +139,7 @@
           <div class="chart-head">
             <h2>Water Level Below Surface</h2>
             <div class="chart-actions">
+              <button id="toggleGroundwaterOutliers" class="chart-download" type="button" aria-pressed="false">Show outliers</button>
               <button class="chart-expand" data-chart-id="waterChart" data-chart-title="Water Level Below Surface" type="button">Expand</button>
               <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
             </div>
@@ -215,9 +216,12 @@
     let selectedSensor = null;
     let selectedRange = 'week';
     let waterPoints = [];
+    let showGroundwaterOutliers = false;
     let waterChart = null;
     let dischargeChart = null;
     let wardInlineCharts = [];
+    let activeWardData = null;
+    let activeSpecificCapacityData = null;
     let fullscreenChart = null;
     let fullscreenSource = null;
 
@@ -261,6 +265,7 @@
       dischargeChartBox: document.getElementById('dischargeChartBox'),
       waterEmpty: document.getElementById('waterEmpty'),
       dischargeEmpty: document.getElementById('dischargeEmpty'),
+      toggleGroundwaterOutliers: document.getElementById('toggleGroundwaterOutliers'),
       downloadWaterChart: document.getElementById('downloadWaterChart'),
       downloadDischargeChart: document.getElementById('downloadDischargeChart'),
       app: document.getElementById('app'),
@@ -1465,7 +1470,7 @@
       });
       return segments[0].length >= 3 ? segments[0] : [];
     };
-    const cleanChartPoints = (rawPoints) => {
+    const cleanChartPointGroups = (rawPoints) => {
       const normalized = rawPoints.map((point) => {
         const waterLevel = validChartLevel(point.waterLevel) ? Number(point.waterLevel) : null;
         const offLevel = validChartLevel(point.offLevel) ? Number(point.offLevel) : null;
@@ -1476,9 +1481,17 @@
         .sort((a, b) => new Date(a.time) - new Date(b.time));
 
       const uniqueLevels = new Set(normalized.map((point) => Number(point.primary).toFixed(2)));
-      if (normalized.length >= 2 && uniqueLevels.size <= 1) return [];
+      if (normalized.length >= 2 && uniqueLevels.size <= 1) return { all: normalized, cleaned: [], outliers: normalized };
 
-      if (normalized.length < 5) return dominantContinuousChartSegment(cleanShortChartSeries(normalized, 'primary'), 'primary');
+      if (normalized.length < 5) {
+        const cleanedShort = dominantContinuousChartSegment(cleanShortChartSeries(normalized, 'primary'), 'primary');
+        const kept = new Set(cleanedShort);
+        return {
+          all: normalized,
+          cleaned: cleanedShort,
+          outliers: normalized.filter((point) => !kept.has(point))
+        };
+      }
 
       const values = normalized.map((point) => point.primary);
       const center = medianValue(values);
@@ -1514,19 +1527,38 @@
 
         return !(failsRollingMedian || failsSmoothTrend || failsSlopeReversal || failsHampel);
       });
-      return dominantContinuousChartSegment(cleaned, 'primary');
+      const dominant = dominantContinuousChartSegment(cleaned, 'primary');
+      const kept = new Set(dominant);
+      return {
+        all: normalized,
+        cleaned: dominant,
+        outliers: normalized.filter((point) => !kept.has(point))
+      };
     };
+    const cleanChartPoints = (rawPoints) => cleanChartPointGroups(rawPoints).cleaned;
 
     const renderCharts = () => {
-      const points = cleanChartPoints(filteredPoints());
-      els.app.classList.toggle('chart-wide', points.length > 120);
+      const pointGroups = cleanChartPointGroups(filteredPoints());
+      const points = pointGroups.cleaned;
+      const plotPoints = showGroundwaterOutliers ? pointGroups.all : pointGroups.cleaned;
+      const cleanedSet = new Set(pointGroups.cleaned);
+      const outlierSet = new Set(pointGroups.outliers);
+      els.app.classList.toggle('chart-wide', plotPoints.length > 120);
       els.app.classList.toggle('nimblevision-mode', currentDataSource === 'vendor');
-      const labels = points.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
-      const offLevels = points.map((point) => point.offLevel).filter((value) => Number.isFinite(value));
-      const onLevels = points.map((point) => point.onLevel).filter((value) => Number.isFinite(value));
-      const water = points.map((point) => point.waterLevel).filter((value) => Number.isFinite(value));
-      const discharge = points.map((point) => point.discharge).filter((value) => Number.isFinite(value));
-      const hasWaterChart = offLevels.length || onLevels.length || water.length;
+      if (els.toggleGroundwaterOutliers) {
+        els.toggleGroundwaterOutliers.textContent = showGroundwaterOutliers
+          ? `Hide outliers (${formatNumber(pointGroups.outliers.length)})`
+          : `Show outliers (${formatNumber(pointGroups.outliers.length)})`;
+        els.toggleGroundwaterOutliers.setAttribute('aria-pressed', showGroundwaterOutliers ? 'true' : 'false');
+        els.toggleGroundwaterOutliers.disabled = !pointGroups.outliers.length;
+      }
+      const labels = plotPoints.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
+      const offLevels = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.offLevel).filter((value) => Number.isFinite(value));
+      const onLevels = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.onLevel).filter((value) => Number.isFinite(value));
+      const water = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.waterLevel).filter((value) => Number.isFinite(value));
+      const discharge = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.discharge).filter((value) => Number.isFinite(value));
+      const outlierLevels = showGroundwaterOutliers ? plotPoints.filter((point) => outlierSet.has(point)).map((point) => point.primary).filter((value) => Number.isFinite(value)) : [];
+      const hasWaterChart = offLevels.length || onLevels.length || water.length || outlierLevels.length;
 
       const waterCanvas = document.getElementById('waterChart');
       const dischargeCanvas = document.getElementById('dischargeChart');
@@ -1540,11 +1572,11 @@
       els.dischargeEmpty.style.display = showDischargeBox && discharge.length ? 'none' : 'grid';
       dischargeCanvas.style.display = showDischargeBox && discharge.length ? 'block' : 'none';
 
-      if (offLevels.length || onLevels.length) {
+      if (offLevels.length || onLevels.length || outlierLevels.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
           {
             label: 'Cleaned level path',
-            data: points.map((point) => Number.isFinite(point.waterLevel) ? point.waterLevel : null),
+            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.waterLevel) ? point.waterLevel : null),
             borderColor: '#4b5563',
             borderDash: [6, 5],
             borderWidth: 2,
@@ -1555,7 +1587,7 @@
           },
           {
             label: 'Off level',
-            data: points.map((point) => Number.isFinite(point.offLevel) ? point.offLevel : null),
+            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) ? point.offLevel : null),
             borderColor: 'rgba(0,0,0,0)',
             pointBorderColor: '#244e9a',
             pointBackgroundColor: '#244e9a',
@@ -1566,13 +1598,24 @@
           },
           {
             label: 'On level',
-            data: points.map((point) => Number.isFinite(point.onLevel) ? point.onLevel : null),
+            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.onLevel) ? point.onLevel : null),
             borderColor: 'rgba(0,0,0,0)',
             pointBorderColor: '#008a3d',
             pointBackgroundColor: '#008a3d',
             borderWidth: 0,
             pointRadius: 3,
             pointHoverRadius: 5,
+            showLine: false
+          },
+          {
+            label: 'Flagged outliers',
+            data: plotPoints.map((point) => outlierSet.has(point) ? point.primary : null),
+            borderColor: '#f59e0b',
+            pointBorderColor: '#92400e',
+            pointBackgroundColor: '#f59e0b',
+            borderWidth: 0,
+            pointRadius: 4,
+            pointHoverRadius: 6,
             showLine: false
           }
         ], {
@@ -1582,7 +1625,25 @@
           rotateXLabels: true
         });
       } else if (water.length) {
-        waterChart = buildChart('waterChart', waterChart, labels, points.map((point) => point.waterLevel), 'Water Level Below Surface', '#244e9a', {
+        waterChart = buildMultiChart('waterChart', waterChart, labels, [
+          {
+            label: 'Water level',
+            data: plotPoints.map((point) => cleanedSet.has(point) ? point.waterLevel : null),
+            borderColor: '#244e9a',
+            showLine: false
+          },
+          {
+            label: 'Flagged outliers',
+            data: plotPoints.map((point) => outlierSet.has(point) ? point.primary : null),
+            borderColor: '#f59e0b',
+            pointBorderColor: '#92400e',
+            pointBackgroundColor: '#f59e0b',
+            borderWidth: 0,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            showLine: false
+          }
+        ], {
           reverseY: true,
           yTitle: 'Feet below surface',
           unit: 'ft',
@@ -1594,7 +1655,7 @@
       }
 
       if (showDischargeBox && discharge.length) {
-        dischargeChart = buildChart('dischargeChart', dischargeChart, labels, points.map((point) => point.discharge), 'Discharge', '#c77700', {
+        dischargeChart = buildChart('dischargeChart', dischargeChart, labels, plotPoints.map((point) => cleanedSet.has(point) ? point.discharge : null), 'Discharge', '#c77700', {
           yTitle: 'Discharge (L/min)',
           unit: 'L/min'
         });
@@ -1604,8 +1665,24 @@
       }
     };
 
+    const refreshGroundwaterOutlierButtons = () => {
+      const label = showGroundwaterOutliers ? 'Hide flagged outliers' : 'Show flagged outliers';
+      document.querySelectorAll('[data-toggle-groundwater-outliers]').forEach((button) => {
+        button.textContent = label;
+        button.setAttribute('aria-pressed', showGroundwaterOutliers ? 'true' : 'false');
+      });
+    };
+    const redrawGroundwaterCharts = () => {
+      renderCharts();
+      if (activeWardData) renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
+      refreshGroundwaterOutlierButtons();
+      refreshFullscreenChart();
+    };
+
     const selectSensor = async (sensor, moveMap) => {
       selectedSensor = sensor;
+      activeWardData = null;
+      activeSpecificCapacityData = null;
       setSensorSectionsVisible(true);
 
       els.app.classList.remove('right-collapsed');
@@ -1626,7 +1703,7 @@
       els.detailFirstData.textContent = formatDateTime(sensor.firstDataAt);
       els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
       els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
-      els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'];
+      els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'] || dataCategoryLabels.none;
       const qc = qcForSensor(sensor);
       els.detailQcStatus.innerHTML = qc ? qcBadgeHtml(qc.qcStatus) : '-';
       els.detailQcScore.textContent = qc ? `${formatNumber(qc.overallQcScore || 0, 1)} / 100` : '-';
@@ -2135,6 +2212,9 @@
               <button type="button" data-range="three">3 Months</button>
               <button type="button" data-range="all">All Time</button>
             </div>
+            <div class="uid-outlier-tabs" data-uid-index="${index}">
+              <button type="button" data-toggle-groundwater-outliers>Show flagged outliers</button>
+            </div>
             <div class="mini-chart-wrap">
               <button class="mini-chart-expand chart-expand" data-chart-id="uidModeChart${index}" data-chart-title="UID ${sensor.uid}" type="button">Expand</button>
               <canvas id="uidModeChart${index}"></canvas>
@@ -2416,7 +2496,17 @@
         }
 
         if (mode === 'daily-level') {
-          const daily = pointsForRange(sensor.dailyLevels || [], range);
+          const rawDaily = pointsForRange(sensor.dailyLevels || [], range);
+          const dailyGroups = cleanChartPointGroups(rawDaily.map((point) => ({
+            ...point,
+            time: point.time || point.date || point.label,
+            waterLevel: point.primaryLevel,
+            offLevel: point.offLevel,
+            onLevel: point.onLevel
+          })));
+          const daily = showGroundwaterOutliers ? dailyGroups.all : dailyGroups.cleaned;
+          const cleanedDailySet = new Set(dailyGroups.cleaned);
+          const outlierDailySet = new Set(dailyGroups.outliers);
           if (daily.length < 3) {
             canvas.style.display = 'none';
             if (empty) {
@@ -2430,7 +2520,7 @@
           canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), [
             {
               label: 'Water level',
-              data: daily.map((point) => point.onLevel == null && point.offLevel == null ? point.primaryLevel : null),
+              data: daily.map((point) => cleanedDailySet.has(point) && point.onLevel == null && point.offLevel == null ? point.primary : null),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#111827',
               pointBackgroundColor: '#111827',
@@ -2442,7 +2532,7 @@
             },
             {
               label: 'Off level',
-              data: daily.map((point) => point.offLevel),
+              data: daily.map((point) => cleanedDailySet.has(point) ? point.offLevel : null),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#244e9a',
               pointBackgroundColor: '#244e9a',
@@ -2454,13 +2544,25 @@
             },
             {
               label: 'On level',
-              data: daily.map((point) => point.onLevel),
+              data: daily.map((point) => cleanedDailySet.has(point) ? point.onLevel : null),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#0f8f4d',
               pointBackgroundColor: '#0f8f4d',
               borderWidth: 0,
               pointRadius: 3,
               pointHoverRadius: 5,
+              showLine: false,
+              unit: 'ft'
+            },
+            {
+              label: 'Flagged outliers',
+              data: daily.map((point) => outlierDailySet.has(point) ? point.primary : null),
+              borderColor: '#f59e0b',
+              pointBorderColor: '#92400e',
+              pointBackgroundColor: '#f59e0b',
+              borderWidth: 0,
+              pointRadius: 4,
+              pointHoverRadius: 6,
               showLine: false,
               unit: 'ft'
             }
@@ -2603,6 +2705,7 @@
           }
         });
       });
+      refreshGroundwaterOutlierButtons();
     };
 
     const selectWard = async (feature) => {
@@ -2645,10 +2748,14 @@
           if (shapeLayer) shapeLayer.bindPopup(wardPopupHtml(feature));
         }
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
+        activeWardData = wardData;
+        activeSpecificCapacityData = capacityPayload;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
         renderWardDetailCharts(wardData, capacityPayload);
       } catch (error) {
         const wardData = wardWeeklyByNo.get(selectedWardNo) || null;
+        activeWardData = wardData;
+        activeSpecificCapacityData = null;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, null);
         renderWardDetailCharts(wardData, null);
         showToast(`Could not load ward weekly data for ward ${selectedWardNo}.`);
@@ -2751,6 +2858,12 @@
       if (!button) return;
       const wardNo = button.dataset.wardNo;
       window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx?ward_no=${encodeURIComponent(wardNo)}`, '_blank', 'noopener');
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('#toggleGroundwaterOutliers, [data-toggle-groundwater-outliers]');
+      if (!button) return;
+      showGroundwaterOutliers = !showGroundwaterOutliers;
+      redrawGroundwaterCharts();
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
     els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));

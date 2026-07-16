@@ -792,7 +792,8 @@
     }
 
     .uid-mode-tabs,
-    .uid-range-tabs {
+    .uid-range-tabs,
+    .uid-outlier-tabs {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
@@ -801,13 +802,19 @@
       background: #f7fafb;
     }
 
-    .uid-range-tabs {
+    .uid-range-tabs,
+    .uid-outlier-tabs {
       padding-top: 0;
       border-top: 0;
     }
 
+    .uid-outlier-tabs {
+      grid-template-columns: 1fr;
+    }
+
     .uid-mode-tabs button,
-    .uid-range-tabs button {
+    .uid-range-tabs button,
+    .uid-outlier-tabs button {
       min-height: 30px;
       padding: 0 6px;
       font-size: 11px;
@@ -819,6 +826,13 @@
       background: var(--ink);
       border-color: var(--ink);
       color: #fff;
+      font-weight: 800;
+    }
+
+    .uid-outlier-tabs button[aria-pressed="true"] {
+      background: #fff7ed;
+      border-color: #f59e0b;
+      color: #92400e;
       font-weight: 800;
     }
 
