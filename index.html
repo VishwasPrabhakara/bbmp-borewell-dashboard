@@ -1527,11 +1527,10 @@
 
         return !(failsRollingMedian || failsSmoothTrend || failsSlopeReversal || failsHampel);
       });
-      const dominant = dominantContinuousChartSegment(cleaned, 'primary');
-      const kept = new Set(dominant);
+      const kept = new Set(cleaned);
       return {
         all: normalized,
-        cleaned: dominant,
+        cleaned,
         outliers: normalized.filter((point) => !kept.has(point))
       };
     };
