@@ -76,6 +76,20 @@
       overflow: hidden;
     }
 
+    .critical-ward-selected .details {
+      background: #fff5f5;
+      border-left-color: #ef9a9a;
+    }
+
+    .critical-ward-selected .details header {
+      background: #fff1f1;
+      border-bottom-color: #efb0b0;
+    }
+
+    .critical-ward-selected .details-body {
+      background: #fff7f7;
+    }
+
     .app.left-collapsed aside,
     .app.right-collapsed .details {
       border: 0;
@@ -673,6 +687,33 @@
 
     .uid-note {
       margin: 0 8px 8px;
+    }
+
+    .critical-reason {
+      border: 1px solid #ef9a9a;
+      border-radius: 8px;
+      background: #fff1f1;
+      color: #7f1d1d;
+      padding: 12px 14px;
+      box-shadow: 0 8px 18px rgba(127, 29, 29, 0.08);
+    }
+
+    .critical-reason strong {
+      display: block;
+      color: #991b1b;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .critical-reason p {
+      margin: 0 0 8px;
+      line-height: 1.45;
+    }
+
+    .critical-reason ul {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.45;
     }
 
     .ward-explain {

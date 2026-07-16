@@ -345,6 +345,25 @@
     };
     const formatTrend = (value, unit, decimals = 2) => value == null ? '-' : `${formatNumber(value, decimals)} ${unit}`;
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
+    const criticalReasonHtml = (critical) => {
+      if (!critical || critical.groundwaterStatus !== 'Critical') return '';
+      const votes = Number(critical.declineMethodVotes || 0);
+      const slope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 2);
+      const sen = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 2);
+      const mk = critical.mannKendallS == null ? '-' : formatNumber(critical.mannKendallS, 0);
+      const points = formatNumber(critical.pointCount || 0);
+      return `
+        <div class="critical-reason">
+          <strong>Why this ward is critical</strong>
+          <p>This ward is flagged because groundwater depth is increasing over time, which means the water level is moving farther below ground.</p>
+          <ul>
+            <li>${votes} of 3 decline checks agree: linear slope, Sen slope, and Mann-Kendall direction.</li>
+            <li>Linear slope: ${slope}; Sen slope: ${sen}; Mann-Kendall S: ${mk}.</li>
+            <li>${points} weekly groundwater points were available for the trend check.</li>
+          </ul>
+        </div>
+      `;
+    };
     const formatDateTime = (value) => {
       if (!value) return '-';
       const date = new Date(value);
@@ -555,6 +574,7 @@
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
+        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> ${formatNumber(criticalGw.declineMethodVotes || 0)} of 3 decline checks agree; linear slope ${formatTrend(criticalGw.linearSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -1690,6 +1710,7 @@
       selectedSensor = sensor;
       activeWardData = null;
       activeSpecificCapacityData = null;
+      els.app.classList.remove('critical-ward-selected');
       setSensorSectionsVisible(true);
 
       els.app.classList.remove('right-collapsed');
@@ -2190,6 +2211,7 @@
       const avgDrop = wardData?.avgDropPerDay;
       const medianDrop = wardData?.medianDropPerDay;
       const maxDrop = wardData?.maxDropPerDay;
+      const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(props)));
       const slopeFit = weeklySlopeFit(wardData?.weekly || []);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
@@ -2335,6 +2357,7 @@
           <button type="button" data-ward-tab="downloads">Downloads</button>
         </nav>
         <section class="ward-tab-panel active" data-ward-panel="overview">
+          ${criticalReasonHtml(criticalGw)}
           <section class="ward-summary-grid">
             ${wardMetric('Total Sensors', formatNumber(count))}
             ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
@@ -2776,12 +2799,14 @@
       const count = props._sensorCount || 0;
       const selectedWardNo = wardNumber(props);
       const selectedWardName = normalizeWardName(wardName(props));
+      const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(selectedWardNo));
       const wardSensors = sensors
         .filter((sensor) => normalizeWardNo(sensor.wardNo) === selectedWardNo || normalizeWardName(sensor.wardName) === selectedWardName)
         .sort((a, b) => String(a.uid).localeCompare(String(b.uid)));
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide');
+      els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && criticalGw?.groundwaterStatus === 'Critical');
       els.toggleRight.textContent = '›';
       els.toggleRight.title = 'Collapse details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
@@ -2794,7 +2819,9 @@
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+      els.detailSubhead.textContent = criticalGw?.groundwaterStatus === 'Critical'
+        ? `Critical groundwater ward: ${formatNumber(criticalGw.declineMethodVotes || 0)} of 3 decline checks agree.`
+        : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
