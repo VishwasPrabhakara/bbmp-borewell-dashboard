@@ -1189,15 +1189,9 @@
         const wardQcPayload = wardQcResponse.ok ? await wardQcResponse.json() : { wards: [] };
         const indicatorsPayload = indicatorsResponse.ok ? await indicatorsResponse.json() : { wards: [] };
         const wardWeeklyPayload = wardWeeklyResponse.ok ? await wardWeeklyResponse.json() : { wards: [] };
-        let criticalGroundwaterPayload = { wards: [] };
-        if (currentDataSource === 'kh') {
-          try {
-            const criticalResponse = await fetch(`${API_BASE_URL}/api/critical-wards-groundwater`);
-            criticalGroundwaterPayload = criticalResponse.ok ? await criticalResponse.json() : { wards: [] };
-          } catch (error) {
-            console.warn('Critical groundwater coloring unavailable', error);
-          }
-        }
+        const criticalGroundwaterPayload = currentDataSource === 'kh'
+          ? buildLocalCriticalGroundwater(wardWeeklyPayload)
+          : { wards: [] };
         const loaded = {
           payload,
           qcPayload,
@@ -1869,6 +1863,42 @@
       if (Number(slope) > 0.1) return 'Declining';
       if (Number(slope) < -0.1) return 'Improving';
       return 'Mostly stable';
+    };
+    const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
+      const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
+        const fit = weeklySlopeFit(ward.weekly || []);
+        const linear = Number(fit.slopeFtPerWeek);
+        const sen = Number(fit.senSlopeFtPerWeek);
+        const mk = Number(fit.mannKendallS);
+        const pointCount = Number(fit.pointCount || 0);
+        const votes = [
+          Number.isFinite(linear) && linear > 0.1,
+          Number.isFinite(sen) && sen > 0.1,
+          Number.isFinite(mk) && mk > 0
+        ].filter(Boolean).length;
+        return {
+          wardNo: ward.wardNo,
+          wardName: ward.wardName,
+          groundwaterStatus: 'Normal',
+          groundwaterDirection: pointCount >= 4 ? 'Mostly stable' : 'Not computed',
+          declineMethodVotes: votes,
+          declineStrengthFtPerWeek: Number.isFinite(linear) ? linear : null,
+          linearSlopeFtPerWeek: Number.isFinite(linear) ? Number(linear.toFixed(4)) : null,
+          senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
+          mannKendallS: Number.isFinite(mk) ? mk : null,
+          pointCount
+        };
+      });
+      const red = candidates
+        .filter((ward) => ward.pointCount >= 4 && ward.declineMethodVotes >= 2 && Number.isFinite(Number(ward.declineStrengthFtPerWeek)))
+        .sort((a, b) => Number(b.declineStrengthFtPerWeek) - Number(a.declineStrengthFtPerWeek))
+        .slice(0, 60);
+      const redSet = new Set(red.map((ward) => normalizeWardNo(ward.wardNo)));
+      return {
+        wards: candidates.map((ward) => redSet.has(normalizeWardNo(ward.wardNo))
+          ? { ...ward, groundwaterStatus: 'Critical', groundwaterDirection: 'Declining' }
+          : ward)
+      };
     };
     const indexedTrendFit = (values = []) => {
       const points = values
