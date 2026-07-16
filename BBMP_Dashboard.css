@@ -3,12 +3,13 @@
       --muted: #66727f;
       --line: #d8e0e8;
       --panel: #fff;
-      --canvas: #edf2f5;
+      --canvas: #eef3f6;
       --accent: #00796b;
       --no-data: #d12f2f;
       --has-data: #008a3d;
       --selected: #244e9a;
-      --shadow: 0 12px 32px rgba(21, 35, 48, 0.16);
+      --soft: #f7fafb;
+      --shadow: 0 14px 36px rgba(21, 35, 48, 0.14);
     }
 
     * { box-sizing: border-box; }
@@ -31,20 +32,20 @@
       height: 100vh;
       min-height: 720px;
       display: grid;
-      grid-template-columns: minmax(320px, 340px) minmax(360px, 1fr) minmax(720px, 820px);
+      grid-template-columns: minmax(340px, 360px) minmax(360px, 1fr) minmax(820px, 940px);
       transition: grid-template-columns 0.2s ease;
     }
 
     .app.chart-wide {
-      grid-template-columns: minmax(300px, 320px) minmax(340px, 1fr) minmax(800px, 900px);
+      grid-template-columns: minmax(320px, 340px) minmax(340px, 1fr) minmax(940px, 1080px);
     }
 
     .app.left-collapsed {
-      grid-template-columns: 0 minmax(360px, 1fr) minmax(720px, 840px);
+      grid-template-columns: 0 minmax(360px, 1fr) minmax(840px, 980px);
     }
 
     .app.left-collapsed.chart-wide {
-      grid-template-columns: 0 minmax(340px, 1fr) minmax(800px, 920px);
+      grid-template-columns: 0 minmax(340px, 1fr) minmax(960px, 1120px);
     }
 
     .app.right-collapsed {
@@ -99,11 +100,11 @@
     }
 
     #toggleRight {
-      right: 834px;
+      right: 954px;
     }
 
     .app.chart-wide #toggleRight {
-      right: 914px;
+      right: 1094px;
     }
 
     .app.left-collapsed #toggleLeft {
@@ -115,13 +116,13 @@
     }
 
     header, .panel-section {
-      padding: 14px 16px;
+      padding: 16px 18px;
       border-bottom: 1px solid var(--line);
     }
 
     h1 {
       margin: 0 0 5px;
-      font-size: 20px;
+      font-size: 21px;
       line-height: 1.15;
       letter-spacing: 0;
     }
@@ -181,7 +182,7 @@
     }
 
     .controls {
-      padding: 12px 16px;
+      padding: 14px 18px;
       display: grid;
       gap: 10px;
       border-bottom: 1px solid var(--line);
@@ -208,19 +209,19 @@
     }
 
     .stats {
-      padding: 10px 16px;
+      padding: 12px 18px;
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       border-bottom: 1px solid var(--line);
     }
 
     .stats .stat:first-child {
-      grid-column: auto;
+      grid-column: 1 / -1;
     }
 
     .stats .stat:last-child {
-      grid-column: 1 / -1;
+      grid-column: auto;
     }
 
     .qc-filter-grid {
@@ -318,13 +319,29 @@
     }
 
     .filter-summary {
-      padding: 10px 16px;
+      padding: 12px 18px;
       display: grid;
       grid-template-columns: minmax(0, 1fr);
       gap: 8px;
       align-items: stretch;
       border-bottom: 1px solid var(--line);
-      background: #f8fbfc;
+      background: var(--soft);
+    }
+
+    .download-panel {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .download-panel summary {
+      min-height: 36px;
+      padding: 9px 11px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--ink);
     }
 
     .export-actions {
@@ -332,6 +349,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
       min-width: 0;
+      padding: 0 10px 10px;
     }
 
     .filter-summary button {
@@ -346,8 +364,9 @@
     .stat {
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 8px;
+      padding: 9px;
       min-width: 0;
+      background: #fff;
     }
 
     .stat strong {
@@ -480,10 +499,10 @@
       border: 1px solid var(--line);
       border-radius: 6px;
       box-shadow: var(--shadow);
-      padding: 8px 9px;
+      padding: 8px;
       font-size: 11px;
       line-height: 1.35;
-      max-width: 185px;
+      max-width: 170px;
     }
 
     .legend-row {
@@ -541,10 +560,11 @@
     .details-body {
       flex: 1;
       overflow: auto;
-      padding: 18px 20px 22px;
+      padding: 18px 22px 26px;
       display: grid;
       align-content: start;
       gap: 16px;
+      background: #fbfdfe;
     }
 
     .ward-detail-panel {
@@ -554,12 +574,12 @@
 
     .ward-summary-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
 
     .ward-summary-grid.compact {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .slope-strip {
@@ -574,7 +594,7 @@
     .ward-metric {
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 9px;
+      padding: 10px;
       min-width: 0;
       background: #fff;
     }
@@ -588,7 +608,7 @@
 
     .ward-metric strong {
       display: block;
-      font-size: 13px;
+      font-size: 14px;
       word-break: break-word;
     }
 
@@ -620,18 +640,19 @@
 
     .ward-explain {
       border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 12px;
-      background: #f8fbfc;
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
       font-size: 12px;
       line-height: 1.45;
       color: var(--muted);
+      box-shadow: 0 8px 18px rgba(21, 35, 48, 0.05);
     }
 
     .ward-explain h3 {
-      margin: 0 0 8px;
+      margin: 0 0 10px;
       color: var(--ink);
-      font-size: 14px;
+      font-size: 15px;
     }
 
     .ward-explain p {
@@ -694,20 +715,20 @@
 
     .uid-chart-list {
       display: grid;
-      gap: 8px;
-      margin-top: 10px;
+      gap: 10px;
+      margin-top: 12px;
     }
 
     .uid-chart-card {
       border: 1px solid var(--line);
-      border-radius: 6px;
+      border-radius: 8px;
       background: #fff;
       overflow: hidden;
     }
 
     .uid-chart-card summary {
       min-height: 38px;
-      padding: 9px 10px;
+      padding: 10px 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -715,6 +736,25 @@
       cursor: pointer;
       font-weight: 800;
       color: var(--ink);
+    }
+
+    .analysis-hint {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 8px;
+      border-top: 1px solid var(--line);
+      background: var(--soft);
+    }
+
+    .analysis-hint span {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 8px;
     }
 
     .uid-chart-card summary small {
@@ -783,13 +823,13 @@
     }
 
     .mini-chart-wrap {
-      height: 250px;
+      height: 290px;
       min-width: 0;
       padding: 8px 8px 28px;
     }
 
     .mini-chart-wrap.large {
-      height: 280px;
+      height: 340px;
       padding: 4px 4px 24px;
     }
 
@@ -1129,7 +1169,9 @@
       .info-grid,
       .detail-grid,
       .button-row,
-      .filter-summary {
+      .filter-summary,
+      .ward-summary-grid,
+      .ward-summary-grid.compact {
         grid-template-columns: 1fr;
       }
 

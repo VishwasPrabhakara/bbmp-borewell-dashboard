@@ -84,13 +84,16 @@
           <strong id="filteredCount">0</strong>
           <span>Filtered Borewells</span>
         </div>
-        <div class="export-actions">
-          <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
-          <button id="downloadWeeklyLevelsCsv" class="primary" type="button">Weekly Levels Excel</button>
-          <button id="downloadNotUsableCsv" class="primary" type="button">Not Usable Excel</button>
-          <button id="downloadSpecificCapacity" class="primary" type="button">Specific Capacity Excel</button>
-          <button id="downloadCriticalGroundwater" class="primary" type="button">Critical GW Excel</button>
-        </div>
+        <details class="download-panel">
+          <summary>Downloads and exports</summary>
+          <div class="export-actions">
+            <button id="exportFiltered" class="primary" type="button">Filtered CSV</button>
+            <button id="downloadWeeklyLevelsCsv" type="button">Weekly Levels Excel</button>
+            <button id="downloadNotUsableCsv" type="button">Not Usable Excel</button>
+            <button id="downloadSpecificCapacity" type="button">Specific Capacity Excel</button>
+            <button id="downloadCriticalGroundwater" type="button">Critical GW Excel</button>
+          </div>
+        </details>
       </section>
 
       <section id="sensorList" class="list"></section>
@@ -1867,6 +1870,30 @@
       if (Number(slope) < -0.1) return 'Improving';
       return 'Mostly stable';
     };
+    const indexedTrendFit = (values = []) => {
+      const points = values
+        .map((value, index) => ({ x: index, y: Number(value) }))
+        .filter((point) => Number.isFinite(point.y));
+      if (points.length < 2) return { slope: null, trendData: values.map(() => null), pointCount: points.length };
+      const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+      const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+      const denominator = points.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
+      if (!denominator) return { slope: null, trendData: values.map(() => null), pointCount: points.length };
+      const slope = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / denominator;
+      const intercept = meanY - slope * meanX;
+      const validIndexes = new Set(points.map((point) => point.x));
+      return {
+        slope,
+        trendData: values.map((_, index) => validIndexes.has(index) ? intercept + slope * index : null),
+        pointCount: points.length
+      };
+    };
+    const performanceTrendLabel = (slope, inverseMode = false) => {
+      if (!Number.isFinite(Number(slope))) return 'Not computed';
+      if (Math.abs(Number(slope)) < 0.0001) return 'Stable';
+      if (inverseMode) return Number(slope) > 0 ? 'Worsening' : 'Improving';
+      return Number(slope) > 0 ? 'Improving' : 'Worsening';
+    };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const decimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
@@ -2011,6 +2038,10 @@
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
           </div>
+          <div class="analysis-hint">
+            <span>Transmissivity up = improving</span>
+            <span>Inverse up = worsening</span>
+          </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
             <button type="button" class="active" data-sc-mode="specific">Transmissivity</button>
             <button type="button" data-sc-mode="inverse">Inverse Transmissivity</button>
@@ -2092,14 +2123,30 @@
         const inverseMode = mode === 'inverse';
         const sessions = pointsForRange(sensor.sessions || [], range);
         const labels = sessions.map((session) => shortDateTimeLabel(session.time || session.label));
+        const values = sessions.map((session) => inverseMode
+          ? session.inverseSpecificCapacitySPerM2
+          : scaledTransmissivity(session.transmissivityScaled, session.specificCapacityM2s));
+        const fit = indexedTrendFit(values);
+        const trendColor = performanceTrendLabel(fit.slope, inverseMode) === 'Worsening' ? '#dc2626'
+          : performanceTrendLabel(fit.slope, inverseMode) === 'Improving' ? '#0f8f4d'
+            : '#66727f';
         canvas._chart = renderWardLineChart(canvas, labels, [
           {
             label: inverseMode ? 'Inverse transmissivity' : 'Transmissivity',
-            data: sessions.map((session) => inverseMode
-              ? session.inverseSpecificCapacitySPerM2
-              : scaledTransmissivity(session.transmissivityScaled, session.specificCapacityM2s)),
+            data: values,
             borderColor: '#0f8f4d',
             showLine: false,
+            unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
+          },
+          {
+            label: `Trend line (${performanceTrendLabel(fit.slope, inverseMode)})`,
+            data: fit.trendData,
+            borderColor: trendColor,
+            borderDash: [7, 5],
+            borderWidth: 3,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            showLine: true,
             unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
           }
         ], {
