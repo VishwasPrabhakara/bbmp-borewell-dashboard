@@ -69,6 +69,10 @@
           <strong id="wardSensorCount">0</strong>
           <span>Wards With Sensors</span>
         </div>
+        <div class="stat">
+          <strong id="specificCapacityCount">0</strong>
+          <span>SC-ready Sensors</span>
+        </div>
       </section>
 
       <section class="filter-summary">
@@ -237,6 +241,7 @@
       goodQcCount: document.getElementById('goodQcCount'),
       reviewQcCount: document.getElementById('reviewQcCount'),
       wardSensorCount: document.getElementById('wardSensorCount'),
+      specificCapacityCount: document.getElementById('specificCapacityCount'),
       filteredCount: document.getElementById('filteredCount'),
       exportFiltered: document.getElementById('exportFiltered'),
       downloadWeeklyLevelsCsv: document.getElementById('downloadWeeklyLevelsCsv'),
@@ -655,6 +660,9 @@
       els.withoutDataCount.textContent = String(sensors.filter((sensor) => !sensor.hasData).length);
       els.goodQcCount.textContent = String(sensors.filter((sensor) => qcStatusForSensor(sensor) === 'GOOD').length);
       els.reviewQcCount.textContent = String(sensors.filter((sensor) => ['USABLE_WITH_CAUTION', 'POOR', 'INSUFFICIENT_DATA'].includes(qcStatusForSensor(sensor))).length);
+      if (els.specificCapacityCount) {
+        els.specificCapacityCount.textContent = String(sensors.filter((sensor) => sensor.dataCategory === 'both').length);
+      }
       els.filteredCount.textContent = String(visible.length);
       els.exportFiltered.disabled = !visible.length;
 
@@ -2299,39 +2307,68 @@
           </div>
         </details>
       `).join('');
+      const keyCapacityMetrics = capacitySensors.length ? `
+        ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
+        ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
+        ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+      ` : '';
+      const detailedCapacityMetrics = capacitySensors.length ? `
+        ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
+        ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
+        ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Median Specific Capacity', `${formatNumber(medianValue(capacitySpecificValues), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+        ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+        ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
+        ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}`)}
+        ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}`)}
+      ` : '';
 
       return `
-        <section class="ward-summary-grid">
-          ${wardMetric('Total Sensors', formatNumber(count))}
-          ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
-          ${wardMetric('Not Usable', formatNumber(notUsable))}
-          ${wardMetric('GOOD Sensor %', goodPercent)}
-          ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
-          ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
+        <nav class="ward-tabs" aria-label="Ward detail sections">
+          <button type="button" class="active" data-ward-tab="overview">Overview</button>
+          <button type="button" data-ward-tab="groundwater">Groundwater Trend</button>
+          <button type="button" data-ward-tab="capacity">Specific Capacity</button>
+          <button type="button" data-ward-tab="uids">UID Charts</button>
+          <button type="button" data-ward-tab="downloads">Downloads</button>
+        </nav>
+        <section class="ward-tab-panel active" data-ward-panel="overview">
+          <section class="ward-summary-grid">
+            ${wardMetric('Total Sensors', formatNumber(count))}
+            ${wardMetric('GOOD Sensors', formatNumber(goodSensors))}
+            ${wardMetric('Not Usable', formatNumber(notUsable))}
+            ${wardMetric('GOOD Sensor %', goodPercent)}
+            ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
+            ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
+            ${keyCapacityMetrics}
+          </section>
+          ${dropNote}
+          ${omittedNote}
+          <section class="ward-explain formula-card">
+            <h3>Calculation Notes</h3>
+            <p><strong>Specific Capacity</strong> = Lowest discharge during pumping period / Drawdown.</p>
+            <p><strong>Inverse Specific Capacity</strong> = Drawdown / Lowest discharge during pumping period.</p>
+            <p>Groundwater decline uses cleaned weekly water-level readings; positive slope means water level below surface is increasing, which indicates decline.</p>
+          </section>
         </section>
-        ${dropNote}
-        ${omittedNote}
-        <section class="ward-explain">
-          <h3>Specific Capacity</h3>
-          <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download this ward Excel</button>
-          ${capacitySensors.length ? `
-            <div class="ward-summary-grid compact">
-              ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
-              ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
-              ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-              ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-              ${wardMetric('Median Specific Capacity', `${formatNumber(medianValue(capacitySpecificValues), 4)} x10^-6 m2/s`)}
-              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
-              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
-              ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
-              ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}`)}
-              ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}`)}
+        <section class="ward-tab-panel" data-ward-panel="capacity">
+          <section class="ward-explain capacity-spotlight">
+            <div class="section-head">
+              <div>
+                <h3>Specific Capacity</h3>
+                <p>Session-level pump performance using discharge divided by drawdown. Lower specific capacity or higher inverse specific capacity needs closer review.</p>
+              </div>
+              <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download Ward Excel</button>
             </div>
-          ` : ''}
-          ${capacityMissingNote}
-          ${capacityPanels ? `<div class="uid-chart-list">${capacityPanels}</div>` : ''}
+            ${capacitySensors.length ? `<div class="ward-summary-grid compact">${detailedCapacityMetrics}</div>` : ''}
+            ${capacityMissingNote}
+            ${capacityPanels ? `<div class="uid-chart-list">${capacityPanels}</div>` : ''}
+          </section>
         </section>
-        <section class="ward-explain">
+        <section class="ward-tab-panel" data-ward-panel="groundwater">
+          <section class="ward-explain">
           <h3>Ward Weekly Groundwater Trend</h3>
           ${hasWardWeeklyData
             ? `
@@ -2346,11 +2383,25 @@
               <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
             `
             : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
+          </section>
         </section>
-        <section class="ward-explain">
-          <h3>GOOD Sensor UIDs</h3>
-          <p class="ward-table-note">Only QC-good sensors with valid cleaned groundwater levels are listed here. QC-good sensors without plot-ready data are counted under Not Usable for this analysis.</p>
-          <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
+        <section class="ward-tab-panel" data-ward-panel="uids">
+          <section class="ward-explain">
+            <h3>GOOD Sensor UIDs</h3>
+            <p class="ward-table-note">Only QC-good sensors with valid cleaned groundwater levels are listed here. QC-good sensors without plot-ready data are counted under Not Usable for this analysis.</p>
+            <div class="uid-chart-list">${sensorPanels || '<div class="empty-chart">No GOOD UID weekly plot data for this ward.</div>'}</div>
+          </section>
+        </section>
+        <section class="ward-tab-panel" data-ward-panel="downloads">
+          <section class="ward-explain">
+            <h3>Downloads</h3>
+            <div class="export-actions ward-download-actions">
+              <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Specific Capacity Excel for this ward</button>
+              <button type="button" id="wardDownloadWeeklyLevels">Weekly Levels Excel</button>
+              <button type="button" id="wardDownloadNotUsable">Not Usable Sensors Excel</button>
+            </div>
+            <p class="ward-table-note">Use ward-specific specific capacity Excel for faster download. The full city-wide file can be heavy.</p>
+          </section>
         </section>
       `;
     };
@@ -2704,6 +2755,19 @@
           }
         });
       });
+      document.querySelectorAll('.ward-tabs button[data-ward-tab]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const target = button.dataset.wardTab;
+          document.querySelectorAll('.ward-tabs button[data-ward-tab]').forEach((item) => {
+            item.classList.toggle('active', item === button);
+          });
+          document.querySelectorAll('.ward-tab-panel').forEach((panel) => {
+            panel.classList.toggle('active', panel.dataset.wardPanel === target);
+          });
+          window.setTimeout(() => wardInlineCharts.forEach((chart) => chart.resize()), 80);
+          refreshFullscreenChart();
+        });
+      });
       refreshGroundwaterOutlierButtons();
     };
 
@@ -2857,6 +2921,14 @@
       if (!button) return;
       const wardNo = button.dataset.wardNo;
       window.open(`${API_BASE_URL}/api/specific-capacity/wards.xlsx?ward_no=${encodeURIComponent(wardNo)}`, '_blank', 'noopener');
+    });
+    document.addEventListener('click', (event) => {
+      if (event.target.closest('#wardDownloadWeeklyLevels')) {
+        window.open(`${API_BASE_URL}/api/good-sensor-weekly-start-levels.xlsx`, '_blank', 'noopener');
+      }
+      if (event.target.closest('#wardDownloadNotUsable')) {
+        window.open(`${API_BASE_URL}/api/qc/not-usable-sensors.xlsx`, '_blank', 'noopener');
+      }
     });
     document.addEventListener('click', (event) => {
       const button = event.target.closest('#toggleGroundwaterOutliers, [data-toggle-groundwater-outliers]');
