@@ -281,14 +281,13 @@
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
       water: 'Water Level only',
-      discharge: 'Discharge only',
       none: 'No data'
     };
 
     const dataCategoryColors = {
       both: '#007a3d',
       water: '#1d4ed8',
-      discharge: '#f59e0b',
+      discharge: '#d12f2f',
       none: '#d12f2f'
     };
 
@@ -328,7 +327,7 @@
       if (!Number.isFinite(number)) return value || '-';
       return number.toLocaleString('en-IN', { maximumFractionDigits: decimals });
     };
-    const scaledTransmissivity = (scaledValue, rawValue) => {
+    const scaledSpecificCapacity = (scaledValue, rawValue) => {
       const scaled = Number(scaledValue);
       if (Number.isFinite(scaled)) return scaled;
       const raw = Number(rawValue);
@@ -620,7 +619,7 @@
       <div><strong>Ward No:</strong> ${sensor.wardNo || 'Not matched'}</div>
       <div><strong>Ward Name:</strong> ${sensor.wardName || 'Not matched'}</div>
       <div><strong>Lat/Lon:</strong> ${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}</div>
-      <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none']}</div>
+      <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none'] || dataCategoryLabels.none}</div>
       <div><strong>QC:</strong> ${qcStatusLabels[qcStatusForSensor(sensor)] || 'Not scored'}</div>
       <div><strong>First Data:</strong> ${formatDateTime(sensor.firstDataAt)}</div>
       <div><strong>Last Data:</strong> ${formatDateTime(sensor.lastDataAt)}</div>
@@ -1904,16 +1903,65 @@
       const points = values
         .map((value, index) => ({ x: index, y: Number(value) }))
         .filter((point) => Number.isFinite(point.y));
-      if (points.length < 2) return { slope: null, trendData: values.map(() => null), pointCount: points.length };
+      if (points.length < 2) {
+        return {
+          slope: null,
+          senSlope: null,
+          mannKendallS: null,
+          mannKendallPValue: null,
+          trendData: values.map(() => null),
+          pointCount: points.length
+        };
+      }
       const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
       const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
       const denominator = points.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
-      if (!denominator) return { slope: null, trendData: values.map(() => null), pointCount: points.length };
+      if (!denominator) {
+        return {
+          slope: null,
+          senSlope: null,
+          mannKendallS: null,
+          mannKendallPValue: null,
+          trendData: values.map(() => null),
+          pointCount: points.length
+        };
+      }
       const slope = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / denominator;
       const intercept = meanY - slope * meanX;
       const validIndexes = new Set(points.map((point) => point.x));
+      const pairSlopes = [];
+      let mannKendallS = 0;
+      for (let i = 0; i < points.length - 1; i += 1) {
+        for (let j = i + 1; j < points.length; j += 1) {
+          const dx = points[j].x - points[i].x;
+          const dy = points[j].y - points[i].y;
+          if (dx > 0) pairSlopes.push(dy / dx);
+          mannKendallS += dy > 0 ? 1 : dy < 0 ? -1 : 0;
+        }
+      }
+      const sortedSlopes = pairSlopes.slice().sort((a, b) => a - b);
+      const senSlope = sortedSlopes.length
+        ? sortedSlopes.length % 2
+          ? sortedSlopes[Math.floor(sortedSlopes.length / 2)]
+          : (sortedSlopes[(sortedSlopes.length / 2) - 1] + sortedSlopes[sortedSlopes.length / 2]) / 2
+        : null;
+      const variance = (points.length * (points.length - 1) * ((2 * points.length) + 5)) / 18;
+      const mkZ = variance > 0
+        ? mannKendallS > 0 ? (mannKendallS - 1) / Math.sqrt(variance) : mannKendallS < 0 ? (mannKendallS + 1) / Math.sqrt(variance) : 0
+        : null;
+      const normalCdf = (value) => {
+        const sign = value < 0 ? -1 : 1;
+        const x = Math.abs(value) / Math.sqrt(2);
+        const t = 1 / (1 + 0.3275911 * x);
+        const erf = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+        return 0.5 * (1 + sign * erf);
+      };
+      const mkP = Number.isFinite(mkZ) ? 2 * (1 - normalCdf(Math.abs(mkZ))) : null;
       return {
         slope,
+        senSlope,
+        mannKendallS,
+        mannKendallPValue: mkP,
         trendData: values.map((_, index) => validIndexes.has(index) ? intercept + slope * index : null),
         pointCount: points.length
       };
@@ -1924,11 +1972,43 @@
       if (inverseMode) return Number(slope) > 0 ? 'Worsening' : 'Improving';
       return Number(slope) > 0 ? 'Improving' : 'Worsening';
     };
+    const capacityOutlierBounds = (values = []) => {
+      const sorted = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (sorted.length < 4) return null;
+      const q1 = medianValue(sorted.slice(0, Math.floor(sorted.length / 2)));
+      const q3 = medianValue(sorted.slice(Math.ceil(sorted.length / 2)));
+      const iqr = q3 - q1;
+      if (!Number.isFinite(iqr) || iqr <= 0) return null;
+      return { lower: q1 - (1.5 * iqr), upper: q3 + (1.5 * iqr) };
+    };
+    const cleanedCapacitySeries = (sessions = [], inverseMode = false) => {
+      const rows = sessions.map((session) => ({
+        session,
+        value: inverseMode
+          ? Number(session.inverseSpecificCapacitySPerM2)
+          : scaledSpecificCapacity(session.transmissivityScaled, session.specificCapacityM2s)
+      }));
+      const bounds = capacityOutlierBounds(rows.map((row) => row.value));
+      return rows.map((row) => {
+        const isOutlier = bounds && Number.isFinite(row.value) && (row.value < bounds.lower || row.value > bounds.upper);
+        return { ...row, isOutlier };
+      });
+    };
+    const capacityTrendSummary = (sessions = [], inverseMode = false) => {
+      const rows = cleanedCapacitySeries(sessions, inverseMode);
+      const values = rows.map((row) => row.isOutlier ? null : row.value);
+      const fit = indexedTrendFit(values);
+      return {
+        fit,
+        outlierCount: rows.filter((row) => row.isOutlier).length,
+        trend: performanceTrendLabel(fit.slope, inverseMode)
+      };
+    };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
-      const decimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
+      const decimals = options.unit === 'm2/s' || options.unit === 'x10^-6 m2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
       const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(decimals)) : null;
-      const tooltipDecimals = options.unit === 'm2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
+      const tooltipDecimals = options.unit === 'm2/s' || options.unit === 'x10^-6 m2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
       const rotateLabels = Boolean(options.rotateXLabels) || (options.autoRotateXLabels && labels.length > 10);
       const chart = new Chart(canvas, {
         type: 'line',
@@ -2048,6 +2128,13 @@
       const capacitySensors = specificCapacityData?.sensors || [];
       const capacityWard = specificCapacityData?.ward || {};
       const capacityDiagnostics = specificCapacityData?.diagnostics || {};
+      const capacityAnalyses = new Map(capacitySensors.map((sensor) => [
+        String(sensor.uid),
+        {
+          specific: capacityTrendSummary(sensor.sessions || [], false),
+          inverse: capacityTrendSummary(sensor.sessions || [], true)
+        }
+      ]));
       const capacityMissingNote = capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
           ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.</div>`
@@ -2059,22 +2146,28 @@
         <details class="uid-chart-card">
           <summary>
             <span>${sensor.uid}</span>
-            <small>Avg ${formatNumber(scaledTransmissivity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
+            <small>Avg ${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
-            ${wardMetric('Average Transmissivity', `${formatNumber(scaledTransmissivity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-            ${wardMetric('Maximum Transmissivity', `${formatNumber(scaledTransmissivity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-            ${wardMetric('Average Inverse Transmissivity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+            ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+            ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+            ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
+            ${wardMetric('Specific Capacity Trend', capacityAnalyses.get(String(sensor.uid))?.specific.trend || 'Not computed')}
+            ${wardMetric('Specific Capacity Sen Slope', capacityAnalyses.get(String(sensor.uid))?.specific.fit.senSlope == null ? '-' : formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.fit.senSlope, 4))}
+            ${wardMetric('Specific Capacity MK p-value', capacityAnalyses.get(String(sensor.uid))?.specific.fit.mannKendallPValue == null ? '-' : formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.fit.mannKendallPValue, 3))}
+            ${wardMetric('Specific Capacity Outliers', formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.outlierCount || 0))}
+            ${wardMetric('Inverse Specific Capacity Trend', capacityAnalyses.get(String(sensor.uid))?.inverse.trend || 'Not computed')}
+            ${wardMetric('Inverse Specific Capacity Outliers', formatNumber(capacityAnalyses.get(String(sensor.uid))?.inverse.outlierCount || 0))}
           </div>
           <div class="analysis-hint">
-            <span>Transmissivity up = improving</span>
-            <span>Inverse up = worsening</span>
+            <span>Specific capacity up = improving</span>
+            <span>Inverse specific capacity up = worsening</span>
           </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
-            <button type="button" class="active" data-sc-mode="specific">Transmissivity</button>
-            <button type="button" data-sc-mode="inverse">Inverse Transmissivity</button>
+            <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
+            <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
           </div>
           <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
             <button type="button" class="active" data-range="week">Last Week</button>
@@ -2083,7 +2176,7 @@
             <button type="button" data-range="all">All Time</button>
           </div>
           <div class="mini-chart-wrap">
-            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Transmissivity" type="button">Expand</button>
+            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
             <canvas id="uidSpecificCapacityChart${index}"></canvas>
           </div>
         </details>
@@ -2101,16 +2194,16 @@
         ${dropNote}
         ${omittedNote}
         <section class="ward-explain">
-          <h3>Transmissivity</h3>
+          <h3>Specific Capacity</h3>
           <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download this ward Excel</button>
           ${capacitySensors.length ? `
             <div class="ward-summary-grid compact">
-              ${wardMetric('Transmissivity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
-              ${wardMetric('Transmissivity Sessions', formatNumber(capacityWard.validSessions || 0))}
-              ${wardMetric('Average Transmissivity', `${formatNumber(scaledTransmissivity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-              ${wardMetric('Maximum Transmissivity', `${formatNumber(scaledTransmissivity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-              ${wardMetric('Average Inverse Transmissivity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
-              ${wardMetric('Maximum Inverse Transmissivity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
+              ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
+              ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+              ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+              ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             </div>
           ` : ''}
           ${capacityMissingNote}
@@ -2153,18 +2246,29 @@
         const inverseMode = mode === 'inverse';
         const sessions = pointsForRange(sensor.sessions || [], range);
         const labels = sessions.map((session) => shortDateTimeLabel(session.time || session.label));
-        const values = sessions.map((session) => inverseMode
-          ? session.inverseSpecificCapacitySPerM2
-          : scaledTransmissivity(session.transmissivityScaled, session.specificCapacityM2s));
+        const rows = cleanedCapacitySeries(sessions, inverseMode);
+        const values = rows.map((row) => row.isOutlier ? null : row.value);
+        const outlierValues = rows.map((row) => row.isOutlier ? row.value : null);
         const fit = indexedTrendFit(values);
         const trendColor = performanceTrendLabel(fit.slope, inverseMode) === 'Worsening' ? '#dc2626'
           : performanceTrendLabel(fit.slope, inverseMode) === 'Improving' ? '#0f8f4d'
             : '#66727f';
         canvas._chart = renderWardLineChart(canvas, labels, [
           {
-            label: inverseMode ? 'Inverse transmissivity' : 'Transmissivity',
+            label: inverseMode ? 'Inverse specific capacity' : 'Specific capacity',
             data: values,
             borderColor: '#0f8f4d',
+            showLine: false,
+            unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
+          },
+          {
+            label: 'Flagged outliers',
+            data: outlierValues,
+            borderColor: '#f59e0b',
+            pointBackgroundColor: '#f59e0b',
+            pointBorderColor: '#92400e',
+            pointRadius: 4,
+            pointHoverRadius: 6,
             showLine: false,
             unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
           },
@@ -2182,7 +2286,7 @@
         ], {
           showLine: false,
           reverseY: false,
-          yTitle: inverseMode ? 'Inverse Transmissivity (s/m2)' : 'Transmissivity (x10^-6 m2/s)',
+          yTitle: inverseMode ? 'Inverse Specific Capacity (s/m2)' : 'Specific Capacity (x10^-6 m2/s)',
           unit: inverseMode ? 's/m2' : 'x10^-6 m2/s',
           rotateXLabels: true,
           autoSkipXLabels: false,
