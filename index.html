@@ -348,17 +348,25 @@
     const criticalReasonHtml = (critical) => {
       if (!critical || critical.groundwaterStatus !== 'Critical') return '';
       const votes = Number(critical.declineMethodVotes || 0);
-      const slope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 2);
-      const sen = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 2);
+      const linearValue = Number(critical.linearSlopeFtPerWeek);
+      const senValue = Number(critical.senSlopeFtPerWeek);
+      const mkValue = Number(critical.mannKendallS);
+      const slope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 4);
+      const sen = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 4);
       const mk = critical.mannKendallS == null ? '-' : formatNumber(critical.mannKendallS, 0);
       const points = formatNumber(critical.pointCount || 0);
+      const methodRows = [
+        `Linear slope ${Number.isFinite(linearValue) && linearValue > 0.1 ? 'triggered' : 'did not trigger'} (${slope})`,
+        `Sen slope ${Number.isFinite(senValue) && senValue > 0.1 ? 'triggered' : 'did not trigger'} (${sen})`,
+        `Mann-Kendall ${Number.isFinite(mkValue) && mkValue > 0 ? 'triggered' : 'did not trigger'} (S = ${mk})`
+      ];
       return `
         <div class="critical-reason">
           <strong>Why this ward is critical</strong>
           <p>This ward is flagged because groundwater depth is increasing over time, which means the water level is moving farther below ground.</p>
           <ul>
-            <li>${votes} of 3 decline checks agree: linear slope, Sen slope, and Mann-Kendall direction.</li>
-            <li>Linear slope: ${slope}; Sen slope: ${sen}; Mann-Kendall S: ${mk}.</li>
+            <li>${votes} of 3 decline checks agree.</li>
+            ${methodRows.map((row) => `<li>${row}</li>`).join('')}
             <li>${points} weekly groundwater points were available for the trend check.</li>
           </ul>
         </div>
@@ -2397,7 +2405,7 @@
             ? `
               <section class="ward-summary-grid compact slope-strip">
                 ${wardMetric('Linear slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
-                ${wardMetric('Sen slope', formatTrend(slopeFit.senSlopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.senSlopeFtPerWeek))}
+                ${wardMetric('Sen slope', formatTrend(slopeFit.senSlopeFtPerWeek, 'ft/week', 4), slopeClass(slopeFit.senSlopeFtPerWeek))}
                 ${wardMetric('Mann-Kendall', slopeFit.mannKendallTrend || 'Not computed', slopeClass(slopeFit.mannKendallS))}
                 ${wardMetric('MK p-value', slopeFit.mannKendallPValue == null ? '-' : formatNumber(slopeFit.mannKendallPValue, 3))}
                 ${wardMetric('Visual trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
