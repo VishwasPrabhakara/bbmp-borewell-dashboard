@@ -1189,7 +1189,15 @@
         const wardQcPayload = wardQcResponse.ok ? await wardQcResponse.json() : { wards: [] };
         const indicatorsPayload = indicatorsResponse.ok ? await indicatorsResponse.json() : { wards: [] };
         const wardWeeklyPayload = wardWeeklyResponse.ok ? await wardWeeklyResponse.json() : { wards: [] };
-        const criticalGroundwaterPayload = { wards: wardWeeklyPayload.criticalGroundwater || [] };
+        let criticalGroundwaterPayload = { wards: [] };
+        if (currentDataSource === 'kh') {
+          try {
+            const criticalResponse = await fetch(`${API_BASE_URL}/api/critical-wards-groundwater`);
+            criticalGroundwaterPayload = criticalResponse.ok ? await criticalResponse.json() : { wards: [] };
+          } catch (error) {
+            console.warn('Critical groundwater coloring unavailable', error);
+          }
+        }
         const loaded = {
           payload,
           qcPayload,
