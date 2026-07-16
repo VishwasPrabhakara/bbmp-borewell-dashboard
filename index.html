@@ -358,8 +358,8 @@
       const mk = critical.mannKendallS == null ? '-' : formatNumber(critical.mannKendallS, 0);
       const points = formatNumber(critical.pointCount || 0);
       const methodRows = [
-        `Linear slope ${Number.isFinite(linearValue) && linearValue > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'triggered' : 'did not trigger'} (${slope}; threshold > ${LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK} ft/week)`,
-        `Worsening intervals ${Number.isFinite(worseningPercent) && worseningPercent >= WORSENING_INTERVAL_THRESHOLD_PERCENT ? 'triggered' : 'did not trigger'} (${worsening}; threshold >= ${WORSENING_INTERVAL_THRESHOLD_PERCENT}%)`,
+        `Linear slope ${Number.isFinite(linearValue) && linearValue > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'triggered' : 'did not trigger'} (${slope})`,
+        `Worsening intervals ${Number.isFinite(worseningPercent) && worseningPercent >= WORSENING_INTERVAL_THRESHOLD_PERCENT ? 'triggered' : 'did not trigger'} (${worsening})`,
         `Mann-Kendall ${Number.isFinite(mkValue) && mkValue > 0 ? 'triggered' : 'did not trigger'} (S = ${mk})`
       ];
       return `
