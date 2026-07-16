@@ -2004,6 +2004,27 @@
         trend: performanceTrendLabel(fit.slope, inverseMode)
       };
     };
+    const percentileValue = (values = [], percentile = 0.5) => {
+      const sorted = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      if (!sorted.length) return null;
+      const position = (sorted.length - 1) * percentile;
+      const lower = Math.floor(position);
+      const upper = Math.ceil(position);
+      if (lower === upper) return sorted[lower];
+      return sorted[lower] + ((sorted[upper] - sorted[lower]) * (position - lower));
+    };
+    const percentileClass = (value, lowCut, highCut, inverseMode = false) => {
+      const number = Number(value);
+      if (!Number.isFinite(number) || !Number.isFinite(Number(lowCut)) || !Number.isFinite(Number(highCut))) return 'Not computed';
+      if (inverseMode) {
+        if (number >= highCut) return 'Low performance';
+        if (number <= lowCut) return 'High performance';
+        return 'Medium performance';
+      }
+      if (number >= highCut) return 'High performance';
+      if (number <= lowCut) return 'Low performance';
+      return 'Medium performance';
+    };
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const decimals = options.unit === 'm2/s' || options.unit === 'x10^-6 m2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
@@ -2135,6 +2156,22 @@
           inverse: capacityTrendSummary(sensor.sessions || [], true)
         }
       ]));
+      const capacitySpecificValues = capacitySensors
+        .map((sensor) => scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s))
+        .filter(Number.isFinite);
+      const capacityInverseValues = capacitySensors
+        .map((sensor) => Number(sensor.averageInverseSpecificCapacitySPerM2))
+        .filter(Number.isFinite);
+      const specificLowCut = percentileValue(capacitySpecificValues, 0.33);
+      const specificHighCut = percentileValue(capacitySpecificValues, 0.66);
+      const inverseLowCut = percentileValue(capacityInverseValues, 0.33);
+      const inverseHighCut = percentileValue(capacityInverseValues, 0.66);
+      const lowSpecificCount = capacitySensors.filter((sensor) => (
+        percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut) === 'Low performance'
+      )).length;
+      const highInverseCount = capacitySensors.filter((sensor) => (
+        percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true) === 'Low performance'
+      )).length;
       const capacityMissingNote = capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
           ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.</div>`
@@ -2152,6 +2189,8 @@
             ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
             ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
             ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+            ${wardMetric('Specific Capacity Class', percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut))}
+            ${wardMetric('Inverse Specific Capacity Class', percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true))}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Specific Capacity Trend', capacityAnalyses.get(String(sensor.uid))?.specific.trend || 'Not computed')}
@@ -2202,8 +2241,12 @@
               ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
               ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
               ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+              ${wardMetric('Median Specific Capacity', `${formatNumber(medianValue(capacitySpecificValues), 4)} x10^-6 m2/s`)}
               ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
               ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
+              ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
+              ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}`)}
+              ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}`)}
             </div>
           ` : ''}
           ${capacityMissingNote}
