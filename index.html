@@ -191,6 +191,7 @@
     let wardIndicatorsByNo = new Map();
     const bangaloreCenter = [12.9716, 77.5946];
     const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
+    const SPECIFIC_CAPACITY_API_VERSION = 'sc-20260717-2';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -1317,6 +1318,29 @@
       const ordered = (points || []).filter((point) => point.time).sort((a, b) => new Date(a.time) - new Date(b.time));
       const start = rangeStart(ordered, range);
       return ordered.filter((point) => !start || new Date(point.time) >= start);
+    };
+
+    const loadWardSpecificCapacity = async (wardNo) => {
+      const base = `${API_BASE_URL}/api/specific-capacity/ward?ward_no=${encodeURIComponent(wardNo)}`;
+      const fetchCapacity = async (extraQuery) => {
+        const response = await fetch(`${base}&cache_v=${SPECIFIC_CAPACITY_API_VERSION}${extraQuery || ''}`);
+        if (!response.ok) {
+          return { ward: null, sensors: [], loadError: `Specific capacity API returned HTTP ${response.status}.` };
+        }
+        return response.json();
+      };
+
+      try {
+        const payload = await fetchCapacity('');
+        if (hasValidSpecificCapacity(payload.ward) || (payload.sensors || []).length || payload.loadError) return payload;
+        return await fetchCapacity(`&retry=${Date.now()}`);
+      } catch (error) {
+        return {
+          ward: null,
+          sensors: [],
+          loadError: error?.message || 'Specific capacity API request failed.'
+        };
+      }
     };
 
     const buildChart = (canvasId, existing, labels, values, label, color, options = {}) => {
@@ -2986,19 +3010,7 @@
       try {
         const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
         const payload = response.ok ? await response.json() : { ward: null };
-        let capacityPayload = { ward: null, sensors: [] };
-        try {
-          const capacityResponse = await fetch(`${API_BASE_URL}/api/specific-capacity/ward?ward_no=${encodeURIComponent(selectedWardNo)}`);
-          capacityPayload = capacityResponse.ok
-            ? await capacityResponse.json()
-            : { ward: null, sensors: [], loadError: `Specific capacity API returned HTTP ${capacityResponse.status}.` };
-        } catch (capacityError) {
-          capacityPayload = {
-            ward: null,
-            sensors: [],
-            loadError: capacityError?.message || 'Specific capacity API request failed.'
-          };
-        }
+        const capacityPayload = await loadWardSpecificCapacity(selectedWardNo);
         const capacityKey = normalizeWardNo(selectedWardNo);
         if (hasValidSpecificCapacity(capacityPayload.ward)) {
           specificCapacityByWardNo.set(normalizeWardNo(selectedWardNo), capacityPayload.ward);
