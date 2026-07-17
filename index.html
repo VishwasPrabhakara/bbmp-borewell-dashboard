@@ -1324,6 +1324,46 @@
       return ordered.filter((point) => !start || new Date(point.time) >= start);
     };
 
+    const pointDateKey = (value) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value || '').slice(0, 10);
+      return date.toISOString().slice(0, 10);
+    };
+
+    const levelNumber = (point, key) => {
+      const value = Number(point?.[key]);
+      return Number.isFinite(value) ? value : null;
+    };
+
+    const levelChanged = (previous, current, tolerance = 0.25) => {
+      const keys = ['primary', 'waterLevel', 'offLevel', 'onLevel'];
+      return keys.some((key) => {
+        const before = levelNumber(previous, key);
+        const after = levelNumber(current, key);
+        if (before == null && after == null) return false;
+        if (before == null || after == null) return true;
+        return Math.abs(after - before) > tolerance;
+      });
+    };
+
+    const compressSameDayLevelPoints = (points, tolerance = 0.25) => {
+      const ordered = (points || [])
+        .filter((point) => point.time)
+        .sort((a, b) => new Date(a.time) - new Date(b.time));
+      const kept = [];
+      let lastDay = null;
+      let lastKept = null;
+      ordered.forEach((point) => {
+        const day = pointDateKey(point.time);
+        if (day !== lastDay || !lastKept || levelChanged(lastKept, point, tolerance)) {
+          kept.push(point);
+          lastDay = day;
+          lastKept = point;
+        }
+      });
+      return kept;
+    };
+
     const fetchJsonWithRetry = async (url, fallback, retries = 1) => {
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
@@ -2786,14 +2826,17 @@
             offLevel: point.offLevel,
             onLevel: point.onLevel
           })));
-          const daily = showGroundwaterOutliers ? dailyGroups.all : dailyGroups.cleaned;
-          const cleanedDailySet = new Set(dailyGroups.cleaned);
-          const outlierDailySet = new Set(dailyGroups.outliers);
+          const compressedCleaned = compressSameDayLevelPoints(dailyGroups.cleaned);
+          const compressedOutliers = compressSameDayLevelPoints(dailyGroups.outliers);
+          const compressedAll = compressSameDayLevelPoints(dailyGroups.all);
+          const daily = showGroundwaterOutliers ? compressedAll : compressedCleaned;
+          const cleanedDailySet = new Set(compressedCleaned);
+          const outlierDailySet = new Set(compressedOutliers);
           if (daily.length < 3) {
             canvas.style.display = 'none';
             if (empty) {
               empty.style.display = 'grid';
-              empty.textContent = 'Not plotted because fewer than 3 valid cleaned readings remain for this range.';
+              empty.textContent = 'Not plotted because fewer than 3 changed readings remain after removing repeated same-day values.';
             }
             return;
           }
@@ -2848,7 +2891,13 @@
               showLine: false,
               unit: 'ft'
             }
-          ], { yTitle: 'Feet below surface', unit: 'ft', rotateXLabels: true });
+          ], {
+            yTitle: 'Feet below surface',
+            unit: 'ft',
+            rotateXLabels: daily.length > 8,
+            autoSkipXLabels: daily.length > 18,
+            maxTicksLimit: daily.length > 28 ? 14 : 18
+          });
           return;
         }
 
