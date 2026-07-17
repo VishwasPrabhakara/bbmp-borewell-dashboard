@@ -288,7 +288,6 @@
     const sourceQuery = () => `source=${encodeURIComponent(currentDataSource)}`;
     const sourceDisplayName = () => currentDataSource === 'vendor' ? 'Nimblevision' : 'KrishiHrudaya';
     const LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK = 0.1;
-    const WORSENING_INTERVAL_THRESHOLD_PERCENT = 60;
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -351,15 +350,12 @@
       if (!critical || critical.groundwaterStatus !== 'Critical') return '';
       const votes = Number(critical.declineMethodVotes || 0);
       const linearValue = Number(critical.linearSlopeFtPerWeek);
-      const worseningPercent = Number(critical.worseningIntervalPercent);
       const mkValue = Number(critical.mannKendallS);
       const slope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 4);
-      const worsening = Number.isFinite(worseningPercent) ? `${formatNumber(worseningPercent, 1)}%` : '-';
       const mk = critical.mannKendallS == null ? '-' : formatNumber(critical.mannKendallS, 0);
       const points = formatNumber(critical.pointCount || 0);
       const methodRows = [
         `Linear slope ${Number.isFinite(linearValue) && linearValue > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'triggered' : 'did not trigger'} (${slope})`,
-        `Worsening intervals ${Number.isFinite(worseningPercent) && worseningPercent >= WORSENING_INTERVAL_THRESHOLD_PERCENT ? 'triggered' : 'did not trigger'} (${worsening})`,
         `Mann-Kendall ${Number.isFinite(mkValue) && mkValue > 0 ? 'triggered' : 'did not trigger'} (S = ${mk})`
       ];
       return `
@@ -367,7 +363,7 @@
           <strong>Why this ward is critical</strong>
           <p>This ward is flagged because groundwater depth is increasing over time, which means the water level is moving farther below ground.</p>
           <ul>
-            <li>${votes} of 3 decline checks agree.</li>
+            <li>${votes} of 2 decline checks agree.</li>
             ${methodRows.map((row) => `<li>${row}</li>`).join('')}
             <li>${points} weekly groundwater points were available for the trend check.</li>
           </ul>
@@ -584,7 +580,7 @@
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
-        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> ${formatNumber(criticalGw.declineMethodVotes || 0)} of 3 decline checks agree; linear slope ${formatTrend(criticalGw.linearSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
+        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> linear slope and Mann-Kendall both indicate decline; slope ${formatTrend(criticalGw.linearSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -1938,9 +1934,6 @@
           mannKendallZ: null,
           mannKendallPValue: null,
           mannKendallTrend: 'Not computed',
-          worseningIntervalCount: 0,
-          comparableIntervalCount: 0,
-          worseningIntervalPercent: null,
           trendData: weekly.map(() => null),
           pointCount: points.length
         };
@@ -1959,9 +1952,6 @@
           mannKendallZ: null,
           mannKendallPValue: null,
           mannKendallTrend: 'Not computed',
-          worseningIntervalCount: 0,
-          comparableIntervalCount: 0,
-          worseningIntervalPercent: null,
           trendData: weekly.map(() => null),
           pointCount: points.length
         };
@@ -1989,17 +1979,6 @@
         ? sortedSlopes.length % 2
           ? sortedSlopes[Math.floor(sortedSlopes.length / 2)]
           : (sortedSlopes[(sortedSlopes.length / 2) - 1] + sortedSlopes[sortedSlopes.length / 2]) / 2
-        : null;
-      let worseningIntervalCount = 0;
-      let comparableIntervalCount = 0;
-      for (let index = 1; index < points.length; index += 1) {
-        const change = points[index].y - points[index - 1].y;
-        if (!Number.isFinite(change)) continue;
-        comparableIntervalCount += 1;
-        if (change > 0) worseningIntervalCount += 1;
-      }
-      const worseningIntervalPercent = comparableIntervalCount
-        ? (worseningIntervalCount / comparableIntervalCount) * 100
         : null;
       const tieCounts = new Map();
       points.forEach((point) => {
@@ -2031,9 +2010,6 @@
         mannKendallZ: mkZ,
         mannKendallPValue: mkP,
         mannKendallTrend: mannKendallS > 0 ? 'Increasing depth' : mannKendallS < 0 ? 'Decreasing depth' : 'No monotonic trend',
-        worseningIntervalCount,
-        comparableIntervalCount,
-        worseningIntervalPercent,
         trendData: weekly.map((point, index) => {
           const x = Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index;
           return validIndexes.has(x) ? intercept + (slopeFtPerWeek * x) : null;
@@ -2054,11 +2030,9 @@
         const linear = Number(fit.slopeFtPerWeek);
         const sen = Number(fit.senSlopeFtPerWeek);
         const mk = Number(fit.mannKendallS);
-        const worseningPercent = Number(fit.worseningIntervalPercent);
         const pointCount = Number(fit.pointCount || 0);
         const votes = [
           Number.isFinite(linear) && linear > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK,
-          Number.isFinite(worseningPercent) && worseningPercent >= WORSENING_INTERVAL_THRESHOLD_PERCENT,
           Number.isFinite(mk) && mk > 0
         ].filter(Boolean).length;
         return {
@@ -2070,15 +2044,12 @@
           declineStrengthFtPerWeek: Number.isFinite(linear) ? linear : null,
           linearSlopeFtPerWeek: Number.isFinite(linear) ? Number(linear.toFixed(4)) : null,
           senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
-          worseningIntervalPercent: Number.isFinite(worseningPercent) ? Number(worseningPercent.toFixed(2)) : null,
-          worseningIntervalCount: Number(fit.worseningIntervalCount || 0),
-          comparableIntervalCount: Number(fit.comparableIntervalCount || 0),
           mannKendallS: Number.isFinite(mk) ? mk : null,
           pointCount
         };
       });
       const red = candidates
-        .filter((ward) => ward.pointCount >= 4 && ward.declineMethodVotes >= 2 && Number.isFinite(Number(ward.declineStrengthFtPerWeek)))
+        .filter((ward) => ward.pointCount >= 4 && ward.declineMethodVotes === 2 && Number.isFinite(Number(ward.declineStrengthFtPerWeek)))
         .sort((a, b) => Number(b.declineStrengthFtPerWeek) - Number(a.declineStrengthFtPerWeek))
         .slice(0, 60);
       const redSet = new Set(red.map((ward) => normalizeWardNo(ward.wardNo)));
@@ -2527,7 +2498,6 @@
             ? `
               <section class="ward-summary-grid compact slope-strip">
                 ${wardMetric('Linear slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
-                ${wardMetric('Worsening intervals', slopeFit.worseningIntervalPercent == null ? '-' : `${formatNumber(slopeFit.worseningIntervalPercent, 1)}% (${formatNumber(slopeFit.worseningIntervalCount || 0)} / ${formatNumber(slopeFit.comparableIntervalCount || 0)})`, Number(slopeFit.worseningIntervalPercent) >= WORSENING_INTERVAL_THRESHOLD_PERCENT ? 'bad' : '')}
                 ${wardMetric('Mann-Kendall', slopeFit.mannKendallTrend || 'Not computed', slopeClass(slopeFit.mannKendallS))}
                 ${wardMetric('MK p-value', slopeFit.mannKendallPValue == null ? '-' : formatNumber(slopeFit.mannKendallPValue, 3))}
                 ${wardMetric('Visual trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
@@ -3024,7 +2994,7 @@
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
       els.detailSubhead.textContent = criticalGw?.groundwaterStatus === 'Critical'
-        ? `Critical groundwater ward: ${formatNumber(criticalGw.declineMethodVotes || 0)} of 3 decline checks agree.`
+        ? 'Critical groundwater ward: linear slope and Mann-Kendall both indicate decline.'
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
