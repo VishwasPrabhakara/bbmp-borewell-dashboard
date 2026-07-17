@@ -102,8 +102,13 @@
 
     <section class="details">
       <header>
-        <h2 id="detailTitle">Select a borewell</h2>
-        <p class="subhead" id="detailSubhead">Click a marker or list item to view ward details and time-series charts.</p>
+        <div class="details-title-row">
+          <div>
+            <h2 id="detailTitle">Select a borewell</h2>
+            <p class="subhead" id="detailSubhead">Click a marker or list item to view ward details and time-series charts.</p>
+          </div>
+          <button id="closeDetails" class="details-close" type="button" title="Close details panel" aria-label="Close details panel">Close</button>
+        </div>
       </header>
 
       <div class="details-body">
@@ -344,6 +349,12 @@
       const raw = Number(rawValue);
       return Number.isFinite(raw) ? raw * 1000000 : null;
     };
+    const hasValidSpecificCapacity = (capacity) => (
+      Boolean(capacity)
+      && Number(capacity.validSessions || 0) > 0
+      && Number(capacity.uidCount || 0) > 0
+      && Number.isFinite(Number(capacity.averageSpecificCapacityM2s ?? capacity.averageTransmissivityScaled))
+    );
     const formatTrend = (value, unit, decimals = 2) => value == null ? '-' : `${formatNumber(value, decimals)} ${unit}`;
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const criticalReasonHtml = (critical) => {
@@ -577,6 +588,7 @@
       const weekly = wardWeeklyForProps(props);
       const criticalGw = criticalGroundwaterByNo.get(wardNumber(props));
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(wardNumber(props)));
+      const showCapacity = hasValidSpecificCapacity(capacity);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
@@ -585,11 +597,13 @@
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
         <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
-        ${capacity ? `
-          <div><strong>Average specific capacity:</strong> ${formatNumber(capacity.averageSpecificCapacityM2s, 4)} m2/s</div>
-          <div><strong>Maximum specific capacity:</strong> ${formatNumber(capacity.maxSpecificCapacityM2s, 4)} m2/s</div>
+        ${showCapacity ? `
+          <div><strong>Average specific capacity:</strong> ${formatNumber(scaledSpecificCapacity(capacity.averageTransmissivityScaled, capacity.averageSpecificCapacityM2s), 4)}</div>
+          <div><strong>Maximum specific capacity:</strong> ${formatNumber(scaledSpecificCapacity(capacity.maxTransmissivityScaled, capacity.maxSpecificCapacityM2s), 4)}</div>
           <div><strong>Average inverse specific capacity:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 0)} s/m2</div>
           <div><strong>Maximum inverse specific capacity:</strong> ${formatNumber(capacity.maxInverseSpecificCapacitySPerM2, 0)} s/m2</div>
+        ` : capacity ? `
+          <div><strong>Specific capacity:</strong> Not calculated for this ward</div>
         ` : ''}
         <div class="popup-hint">Click ward for full details.</div>
       `;
@@ -2012,7 +2026,8 @@
         mannKendallTrend: mannKendallS > 0 ? 'Increasing depth' : mannKendallS < 0 ? 'Decreasing depth' : 'No monotonic trend',
         trendData: weekly.map((point, index) => {
           const x = Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index;
-          return validIndexes.has(x) ? intercept + (slopeFtPerWeek * x) : null;
+          const predicted = intercept + (slopeFtPerWeek * x);
+          return validIndexes.has(x) ? Math.max(0, predicted) : null;
         }),
         pointCount: points.length
       };
@@ -2366,13 +2381,16 @@
         : '<span class="muted-inline">None</span>';
       const lowSpecificCount = lowSpecificSensors.length;
       const highInverseCount = highInverseSensors.length;
+      const skippedCapacityReasons = (capacityDiagnostics.skippedSensors || []).slice(0, 5)
+        .map((item) => `${htmlEscape(item.uid || '-')}: ${htmlEscape(item.reason || 'No valid pumping session')}`)
+        .join('<br>');
       const capacityMissingNote = capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
-          ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.</div>`
+          ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.${skippedCapacityReasons ? `<br><br>${skippedCapacityReasons}` : ''}</div>`
           : '')
         : (Number(capacityDiagnostics.candidateSensorsWithWaterAndDischarge || 0) > 0
-          ? `<div class="ward-note">This ward has ${formatNumber(capacityDiagnostics.candidateSensorsWithWaterAndDischarge)} sensor(s) with both water-level and discharge data, but specific capacity cannot be calculated because no valid OFF-to-ON pumping session was found with positive duration, positive drawdown, and discharge during the pumping period.</div>`
-          : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>');
+          ? `<div class="ward-note">This ward has ${formatNumber(capacityDiagnostics.candidateSensorsWithWaterAndDischarge)} sensor(s) with both water-level and discharge data, but specific capacity cannot be calculated because no valid OFF-to-ON pumping session was found with positive duration, positive drawdown, and discharge during the pumping period.${skippedCapacityReasons ? `<br><br>${skippedCapacityReasons}` : ''}</div>`
+          : '<div class="ward-note">Specific capacity cannot be calculated for this ward because no sensor currently has both usable water-level and discharge data in the same pumping session.</div>');
       const capacityPanels = capacitySensors.map((sensor, index) => {
         const uid = String(sensor.uid);
         const isLowSpecificUid = lowSpecificUidSet.has(uid);
@@ -2406,6 +2424,8 @@
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
             <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
             <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
+            <button type="button" data-sc-mode="discharge">SC vs Discharge</button>
+            <button type="button" data-sc-mode="duration">SC vs Pumping Time</button>
           </div>
           <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
             <button type="button" class="active" data-range="week">Last Week</button>
@@ -2416,14 +2436,6 @@
           <div class="mini-chart-wrap">
             <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
             <canvas id="uidSpecificCapacityChart${index}"></canvas>
-          </div>
-          <div class="mini-chart-wrap">
-            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityDischargeChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity vs Discharge" type="button">Expand</button>
-            <canvas id="uidSpecificCapacityDischargeChart${index}"></canvas>
-          </div>
-          <div class="mini-chart-wrap">
-            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityDurationChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity vs Pumping Duration" type="button">Expand</button>
-            <canvas id="uidSpecificCapacityDurationChart${index}"></canvas>
           </div>
         </details>
       `;
@@ -2542,45 +2554,27 @@
         const minutes = Number(session.durationMin);
         return Number.isFinite(minutes) ? minutes : null;
       };
-      const drawSpecificCapacityScatter = (sensor, index, range = 'week') => {
+      const drawSpecificCapacityChart = (sensor, index, mode = 'specific', range = 'all') => {
+        const canvas = document.getElementById(`uidSpecificCapacityChart${index}`);
+        if (!canvas) return;
+        if (canvas._chart) {
+          canvas._chart.destroy();
+          wardInlineCharts = wardInlineCharts.filter((chart) => chart !== canvas._chart);
+          canvas._chart = null;
+        }
+        const inverseMode = mode === 'inverse';
         const sessions = pointsForRange(sensor.sessions || [], range);
-        const rows = cleanedCapacitySeries(sessions, false).filter((row) => !row.isOutlier && Number.isFinite(row.value));
-        const scatterConfigs = [
-          {
-            canvas: document.getElementById(`uidSpecificCapacityDischargeChart${index}`),
-            label: 'Specific capacity vs discharge',
-            xTitle: 'Lowest Discharge (L/min)',
-            xDecimals: 1,
-            points: rows.map((row) => ({
-              x: sessionDischargeLpm(row.session),
-              y: row.value,
-              label: shortDateTimeLabel(row.session.time || row.session.label)
-            })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
-          },
-          {
-            canvas: document.getElementById(`uidSpecificCapacityDurationChart${index}`),
-            label: 'Specific capacity vs pumping duration',
-            xTitle: 'Pumping Duration (min)',
-            xDecimals: 0,
-            points: rows.map((row) => ({
-              x: sessionDurationMin(row.session),
-              y: row.value,
-              label: shortDateTimeLabel(row.session.time || row.session.label)
-            })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
-          }
-        ];
-
-        scatterConfigs.forEach((config) => {
-          if (!config.canvas) return;
-          if (config.canvas._chart) {
-            config.canvas._chart.destroy();
-            wardInlineCharts = wardInlineCharts.filter((chart) => chart !== config.canvas._chart);
-            config.canvas._chart = null;
-          }
-          config.canvas._chart = renderWardLineChart(config.canvas, [], [
+        if (mode === 'discharge' || mode === 'duration') {
+          const rows = cleanedCapacitySeries(sessions, false).filter((row) => !row.isOutlier && Number.isFinite(row.value));
+          const points = rows.map((row) => ({
+            x: mode === 'discharge' ? sessionDischargeLpm(row.session) : sessionDurationMin(row.session),
+            y: row.value,
+            label: shortDateTimeLabel(row.session.time || row.session.label)
+          })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+          canvas._chart = renderWardLineChart(canvas, [], [
             {
-              label: config.label,
-              data: config.points,
+              label: mode === 'discharge' ? 'Specific capacity vs discharge' : 'Specific capacity vs pumping time',
+              data: points,
               borderColor: '#0f8f4d',
               pointBackgroundColor: '#f8fafc',
               pointBorderColor: '#0f8f4d',
@@ -2594,24 +2588,14 @@
             showLine: false,
             reverseY: false,
             xType: 'linear',
-            xTitle: config.xTitle,
-            xDecimals: config.xDecimals,
+            xTitle: mode === 'discharge' ? 'Lowest Discharge (L/min)' : 'Pumping Time (min)',
+            xDecimals: mode === 'discharge' ? 1 : 0,
             yTitle: 'Specific Capacity (x10^-6 m2/s)',
             unit: 'x10^-6 m2/s',
             bottomPadding: 18
           });
-        });
-      };
-      const drawSpecificCapacityChart = (sensor, index, mode = 'specific', range = 'all') => {
-        const canvas = document.getElementById(`uidSpecificCapacityChart${index}`);
-        if (!canvas) return;
-        if (canvas._chart) {
-          canvas._chart.destroy();
-          wardInlineCharts = wardInlineCharts.filter((chart) => chart !== canvas._chart);
-          canvas._chart = null;
+          return;
         }
-        const inverseMode = mode === 'inverse';
-        const sessions = pointsForRange(sensor.sessions || [], range);
         const labels = sessions.map((session) => shortDateTimeLabel(session.time || session.label));
         const rows = cleanedCapacitySeries(sessions, inverseMode);
         const values = rows.map((row) => row.isOutlier ? null : row.value);
@@ -2659,7 +2643,6 @@
           autoSkipXLabels: false,
           maxTicksLimit: labels.length || 1
         });
-        drawSpecificCapacityScatter(sensor, index, range);
       };
 
       sensorsWithCapacity.forEach((sensor, index) => {
@@ -3005,12 +2988,16 @@
         ]);
         const payload = response.ok ? await response.json() : { ward: null };
         const capacityPayload = capacityResponse.ok ? await capacityResponse.json() : { ward: null, sensors: [] };
-        if (capacityPayload.ward) {
+        const capacityKey = normalizeWardNo(selectedWardNo);
+        if (hasValidSpecificCapacity(capacityPayload.ward)) {
           specificCapacityByWardNo.set(normalizeWardNo(selectedWardNo), capacityPayload.ward);
           feature.properties._specificCapacity = capacityPayload.ward;
-          const shapeLayer = wardLayers.find((layer) => layer.feature === feature);
-          if (shapeLayer) shapeLayer.bindPopup(wardPopupHtml(feature));
+        } else {
+          specificCapacityByWardNo.delete(capacityKey);
+          delete feature.properties._specificCapacity;
         }
+        const shapeLayer = wardLayers.find((layer) => layer.feature === feature);
+        if (shapeLayer) shapeLayer.bindPopup(wardPopupHtml(feature));
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
@@ -3187,6 +3174,14 @@
       const collapsed = els.app.classList.contains('right-collapsed');
       els.toggleRight.textContent = collapsed ? '‹' : '›';
       els.toggleRight.title = collapsed ? 'Expand details panel' : 'Collapse details panel';
+      els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
+      setTimeout(() => map.invalidateSize(), 220);
+    });
+
+    document.getElementById('closeDetails')?.addEventListener('click', () => {
+      els.app.classList.add('right-collapsed');
+      els.toggleRight.textContent = '‹';
+      els.toggleRight.title = 'Expand details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
       setTimeout(() => map.invalidateSize(), 220);
     });
