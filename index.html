@@ -1346,18 +1346,15 @@
       });
     };
 
-    const compressSameDayLevelPoints = (points, tolerance = 0.25) => {
+    const compressRepeatedLevelPoints = (points, tolerance = 0.25) => {
       const ordered = (points || [])
         .filter((point) => point.time)
         .sort((a, b) => new Date(a.time) - new Date(b.time));
       const kept = [];
-      let lastDay = null;
       let lastKept = null;
       ordered.forEach((point) => {
-        const day = pointDateKey(point.time);
-        if (day !== lastDay || !lastKept || levelChanged(lastKept, point, tolerance)) {
+        if (!lastKept || levelChanged(lastKept, point, tolerance)) {
           kept.push(point);
-          lastDay = day;
           lastKept = point;
         }
       });
@@ -2826,9 +2823,9 @@
             offLevel: point.offLevel,
             onLevel: point.onLevel
           })));
-          const compressedCleaned = compressSameDayLevelPoints(dailyGroups.cleaned);
-          const compressedOutliers = compressSameDayLevelPoints(dailyGroups.outliers);
-          const compressedAll = compressSameDayLevelPoints(dailyGroups.all);
+          const compressedCleaned = compressRepeatedLevelPoints(dailyGroups.cleaned);
+          const compressedOutliers = compressRepeatedLevelPoints(dailyGroups.outliers);
+          const compressedAll = compressRepeatedLevelPoints(dailyGroups.all);
           const daily = showGroundwaterOutliers ? compressedAll : compressedCleaned;
           const cleanedDailySet = new Set(compressedCleaned);
           const outlierDailySet = new Set(compressedOutliers);
@@ -2836,7 +2833,7 @@
             canvas.style.display = 'none';
             if (empty) {
               empty.style.display = 'grid';
-              empty.textContent = 'Not plotted because fewer than 3 changed readings remain after removing repeated same-day values.';
+              empty.textContent = 'Not plotted because fewer than 3 changed readings remain after removing repeated stale values.';
             }
             return;
           }
