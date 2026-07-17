@@ -2309,12 +2309,23 @@
       const specificHighCut = percentileValue(capacitySpecificValues, 0.66);
       const inverseLowCut = percentileValue(capacityInverseValues, 0.33);
       const inverseHighCut = percentileValue(capacityInverseValues, 0.66);
-      const lowSpecificCount = capacitySensors.filter((sensor) => (
+      const lowSpecificSensors = capacitySensors.filter((sensor) => (
         percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut) === 'Low performance'
-      )).length;
-      const highInverseCount = capacitySensors.filter((sensor) => (
+      ));
+      const highInverseSensors = capacitySensors.filter((sensor) => (
         percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true) === 'Low performance'
-      )).length;
+      ));
+      const lowSpecificUidSet = new Set(lowSpecificSensors.map((sensor) => String(sensor.uid)));
+      const highInverseUidSet = new Set(highInverseSensors.map((sensor) => String(sensor.uid)));
+      const attentionUidSet = new Set([...lowSpecificUidSet, ...highInverseUidSet]);
+      const uidChipList = (items, dangerSet = new Set()) => items.length
+        ? `<div class="uid-list capacity-uid-list">${items.map((sensor) => {
+          const uid = String(sensor.uid);
+          return `<span class="${dangerSet.has(uid) ? 'danger' : ''}">${htmlEscape(uid)}</span>`;
+        }).join('')}</div>`
+        : '<span class="muted-inline">None</span>';
+      const lowSpecificCount = lowSpecificSensors.length;
+      const highInverseCount = highInverseSensors.length;
       const capacityMissingNote = capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
           ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.</div>`
@@ -2322,10 +2333,13 @@
         : (Number(capacityDiagnostics.candidateSensorsWithWaterAndDischarge || 0) > 0
           ? `<div class="ward-note">This ward has ${formatNumber(capacityDiagnostics.candidateSensorsWithWaterAndDischarge)} sensor(s) with both water-level and discharge data, but specific capacity cannot be calculated because no valid OFF-to-ON pumping session was found with positive duration, positive drawdown, and discharge during the pumping period.</div>`
           : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>');
-      const capacityPanels = capacitySensors.map((sensor, index) => `
-        <details class="uid-chart-card">
+      const capacityPanels = capacitySensors.map((sensor, index) => {
+        const uid = String(sensor.uid);
+        const isAttentionUid = attentionUidSet.has(uid);
+        return `
+        <details class="uid-chart-card ${isAttentionUid ? 'capacity-alert' : ''}">
           <summary>
-            <span>${sensor.uid}</span>
+            <span>${htmlEscape(uid)}${isAttentionUid ? '<em class="uid-alert-label">Needs attention</em>' : ''}</span>
             <small>Avg ${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
@@ -2362,7 +2376,8 @@
             <canvas id="uidSpecificCapacityChart${index}"></canvas>
           </div>
         </details>
-      `).join('');
+      `;
+      }).join('');
       const keyCapacityMetrics = capacitySensors.length ? `
         ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
         ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
@@ -2378,8 +2393,8 @@
         ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
-        ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}`)}
-        ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}`)}
+        ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(lowSpecificSensors, lowSpecificUidSet)}`, lowSpecificCount ? 'bad' : '')}
+        ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(highInverseSensors, highInverseUidSet)}`, highInverseCount ? 'bad' : '')}
       ` : '';
 
       return `
