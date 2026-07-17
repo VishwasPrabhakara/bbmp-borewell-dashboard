@@ -345,6 +345,12 @@
       if (!Number.isFinite(number)) return value || '-';
       return number.toLocaleString('en-IN', { maximumFractionDigits: decimals });
     };
+    const htmlEscape = (value) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
     const scaledSpecificCapacity = (scaledValue, rawValue) => {
       const scaled = Number(scaledValue);
       if (Number.isFinite(scaled)) return scaled;
