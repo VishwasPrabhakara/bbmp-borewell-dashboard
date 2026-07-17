@@ -901,7 +901,7 @@
         if (!['daily-level', 'daily-drop'].includes(mode) || !rangeTabs) return null;
         return { index, rangeTabs };
       }
-      const capacityMatch = String(canvasId || '').match(/^uidSpecificCapacityChart(\d+)$/);
+      const capacityMatch = String(canvasId || '').match(/^uidSpecificCapacity(?:Discharge|Duration)?Chart(\d+)$/);
       if (capacityMatch) {
         const index = Number(capacityMatch[1]);
         const rangeTabs = document.querySelector(`.sc-range-tabs[data-sc-index="${index}"]`);
@@ -955,6 +955,7 @@
       const fullscreenScales = {};
       Object.entries(sourceScales).forEach(([key, scale]) => {
         fullscreenScales[key] = {
+          type: scale.type,
           position: scale.position,
           reverse: Boolean(scale.reverse),
           grid: scale.grid ? { drawOnChartArea: scale.grid.drawOnChartArea } : undefined,
@@ -1016,12 +1017,15 @@
         labels: [...(sourceChart.data.labels || [])],
         datasets: (sourceChart.data.datasets || []).map((dataset) => ({
           ...dataset,
-          data: [...(dataset.data || [])]
+          data: (dataset.data || []).map((item) => item && typeof item === 'object' ? { ...item } : item)
         }))
       };
       const labelCount = sourceData.labels.length;
-      const denseChartWidth = labelCount > 40
-        ? Math.min(Math.max(labelCount * 54, 1800), 9000)
+      sourceOptions.layout = {
+        padding: { bottom: labelCount > 10 ? 52 : 18 }
+      };
+      const denseChartWidth = labelCount > 18
+        ? Math.min(Math.max(labelCount * 70, 1800), 10000)
         : 0;
       els.chartFullscreenCanvas.classList.toggle('dense-x-axis', Boolean(denseChartWidth));
       els.chartFullscreenCanvas.style.width = denseChartWidth ? `${denseChartWidth}px` : '';
@@ -1334,7 +1338,7 @@
             x: { ticks: { minRotation: rotateLabels ? 90 : 0, maxRotation: rotateLabels ? 90 : 0, autoSkip: true, maxTicksLimit: rotateLabels ? 12 : 6 } },
             y: { reverse: !!options.reverseY, title: { display: true, text: options.yTitle || '' } }
           },
-          plugins: {
+        plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
@@ -1573,6 +1577,49 @@
       };
     };
     const cleanChartPoints = (rawPoints) => cleanChartPointGroups(rawPoints).cleaned;
+    const cleanWeeklyGroundwater = (weekly = []) => {
+      const normalized = weekly.map((point, index) => ({
+        ...point,
+        _xIndex: Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index,
+        averageLevel: validChartLevel(point.averageLevel) ? Number(point.averageLevel) : null
+      }));
+      const valid = normalized.filter((point) => point.averageLevel != null);
+      if (valid.length < 4) {
+        return { cleaned: normalized, outliers: [] };
+      }
+
+      const values = valid.map((point) => point.averageLevel);
+      const center = medianValue(values);
+      const mad = medianValue(values.map((value) => Math.abs(value - center)));
+      const stepMad = medianValue(values.slice(1).map((value, index) => Math.abs(value - values[index])));
+      const baseMad = Number.isFinite(mad) && mad > 0 ? mad : Number.isFinite(stepMad) && stepMad > 0 ? stepMad : 6;
+      const outlierIndexes = new Set();
+
+      valid.forEach((point, validIndex) => {
+        const previous = valid[validIndex - 1];
+        const next = valid[validIndex + 1];
+        const neighbours = [previous, next].filter(Boolean);
+        const localCenter = medianValue(neighbours.map((item) => item.averageLevel));
+        const localLimit = Math.max(30, baseMad * 5);
+        const isolatedJump = Number.isFinite(localCenter)
+          && Math.abs(point.averageLevel - localCenter) > localLimit
+          && neighbours.length === 2
+          && Math.abs(previous.averageLevel - next.averageLevel) <= Math.max(25, baseMad * 4);
+
+        const relativeJump = neighbours.some((item) => {
+          const smaller = Math.max(Math.min(Math.abs(item.averageLevel), Math.abs(point.averageLevel)), 1);
+          const ratio = Math.max(Math.abs(item.averageLevel), Math.abs(point.averageLevel)) / smaller;
+          return ratio >= 10 && Math.abs(point.averageLevel - item.averageLevel) >= 50;
+        });
+
+        if (isolatedJump || relativeJump) outlierIndexes.add(point._xIndex);
+      });
+
+      return {
+        cleaned: normalized.map((point) => outlierIndexes.has(point._xIndex) ? { ...point, averageLevel: null, _outlier: true } : point),
+        outliers: normalized.filter((point) => outlierIndexes.has(point._xIndex))
+      };
+    };
 
     const renderCharts = () => {
       const pointGroups = cleanChartPointGroups(filteredPoints());
@@ -1875,7 +1922,7 @@
     const weeklySlopeFit = (weekly = []) => {
       const points = weekly
         .map((point, index) => ({
-          x: index,
+          x: Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index,
           label: point.label,
           y: Number(point.averageLevel)
         }))
@@ -1987,7 +2034,10 @@
         worseningIntervalCount,
         comparableIntervalCount,
         worseningIntervalPercent,
-        trendData: weekly.map((_, index) => validIndexes.has(index) ? intercept + (slopeFtPerWeek * index) : null),
+        trendData: weekly.map((point, index) => {
+          const x = Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index;
+          return validIndexes.has(x) ? intercept + (slopeFtPerWeek * x) : null;
+        }),
         pointCount: points.length
       };
     };
@@ -2167,11 +2217,17 @@
 
     const renderWardLineChart = (canvas, labels, datasets, options = {}) => {
       const decimals = options.unit === 'm2/s' || options.unit === 'x10^-6 m2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
-      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(decimals)) : null;
+      const chartValue = (value) => {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const y = Number(value.y);
+          return Number.isFinite(y) ? { ...value, y: Number(y.toFixed(decimals)) } : { ...value, y: null };
+        }
+        return value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(decimals)) : null;
+      };
       const tooltipDecimals = options.unit === 'm2/s' || options.unit === 'x10^-6 m2/s' ? 4 : options.unit === 's/m2' ? 0 : 2;
       const rotateLabels = Boolean(options.rotateXLabels) || (options.autoRotateXLabels && labels.length > 10);
       const chart = new Chart(canvas, {
-        type: 'line',
+        type: options.chartType || 'line',
         data: {
           labels,
           datasets: datasets.map((dataset) => ({
@@ -2192,12 +2248,15 @@
           maintainAspectRatio: false,
           scales: {
             x: {
+              type: options.xType || 'category',
+              title: { display: Boolean(options.xTitle), text: options.xTitle || '' },
               ticks: {
                 minRotation: rotateLabels ? 90 : 0,
                 maxRotation: rotateLabels ? 90 : 0,
                 autoSkip: Boolean(options.autoSkipXLabels),
                 maxTicksLimit: options.maxTicksLimit || 12,
                 callback(value) {
+                  if (options.xType === 'linear') return Number(value).toFixed(options.xDecimals ?? 2);
                   return monthAxisLabel(this.getLabelForValue(value));
                 }
               }
@@ -2214,12 +2273,19 @@
               }
             } : {})
           },
+          layout: {
+            padding: { bottom: options.bottomPadding || (rotateLabels ? 24 : 8) }
+          },
           interaction: { mode: 'nearest', intersect: false },
           plugins: {
             legend: { display: true },
             tooltip: {
               callbacks: {
                 title(context) {
+                  if (options.xType === 'linear') {
+                    const raw = context[0]?.raw || {};
+                    return raw.label || `${options.xTitle || 'X'}: ${Number(raw.x).toFixed(options.xDecimals ?? 2)}`;
+                  }
                   return context[0]?.label || '';
                 },
                 label(context) {
@@ -2246,12 +2312,15 @@
       const medianDrop = wardData?.medianDropPerDay;
       const maxDrop = wardData?.maxDropPerDay;
       const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(props)));
-      const slopeFit = weeklySlopeFit(wardData?.weekly || []);
+      const weeklyCleanPreview = cleanWeeklyGroundwater(wardData?.weekly || []);
+      const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
+      const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
-      const hasWardWeeklyData = (wardData?.weekly || []).some((point) =>
-        Number.isFinite(Number(point.averageLevel)) || Number.isFinite(Number(point.medianLevel))
-      );
+      const hasWardWeeklyData = cleanWeeklyPoints.length >= 2;
+      const weeklyOutlierNote = weeklyCleanPreview.outliers.length
+        ? `<div class="ward-note">${formatNumber(weeklyCleanPreview.outliers.length)} weekly groundwater point(s) were hidden because they were invalid, negative/zero, or isolated unrealistic jumps compared with neighbouring weeks.</div>`
+        : '';
       const dropNote = goodSensors > 0 && avgDrop == null && medianDrop == null && maxDrop == null
         ? '<div class="ward-note">Drop/day is blank because the GOOD sensors in this ward do not have at least two successive weekly values to compare.</div>'
         : '';
@@ -2335,16 +2404,18 @@
           : '<div class="ward-note">No valid specific-capacity sessions found for this ward.</div>');
       const capacityPanels = capacitySensors.map((sensor, index) => {
         const uid = String(sensor.uid);
+        const isLowSpecificUid = lowSpecificUidSet.has(uid);
+        const isHighInverseUid = highInverseUidSet.has(uid);
         const isAttentionUid = attentionUidSet.has(uid);
         return `
-        <details class="uid-chart-card ${isAttentionUid ? 'capacity-alert' : ''}">
+        <details class="uid-chart-card ${isAttentionUid ? 'capacity-alert' : ''} ${isLowSpecificUid ? 'specific-low-alert' : ''} ${isHighInverseUid ? 'inverse-high-alert' : ''}">
           <summary>
-            <span>${htmlEscape(uid)}${isAttentionUid ? '<em class="uid-alert-label">Needs attention</em>' : ''}</span>
-            <small>Avg ${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
+            <span>${htmlEscape(uid)}${isLowSpecificUid ? '<em class="uid-alert-label">Low Specific Capacity</em>' : ''}${isHighInverseUid ? '<em class="uid-alert-label inverse">High Inverse</em>' : ''}</span>
+            <small>Avg ${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
           </summary>
           <div class="ward-summary-grid compact">
-            ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-            ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+            ${wardMetric('Average Specific Capacity', formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4))}
+            ${wardMetric('Maximum Specific Capacity', formatNumber(scaledSpecificCapacity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4))}
             ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
             ${wardMetric('Specific Capacity Class', percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut))}
             ${wardMetric('Inverse Specific Capacity Class', percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true))}
@@ -2375,24 +2446,33 @@
             <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity" type="button">Expand</button>
             <canvas id="uidSpecificCapacityChart${index}"></canvas>
           </div>
+          <div class="mini-chart-wrap">
+            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityDischargeChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity vs Discharge" type="button">Expand</button>
+            <canvas id="uidSpecificCapacityDischargeChart${index}"></canvas>
+          </div>
+          <div class="mini-chart-wrap">
+            <button class="mini-chart-expand chart-expand" data-chart-id="uidSpecificCapacityDurationChart${index}" data-chart-title="UID ${sensor.uid} Specific Capacity vs Pumping Duration" type="button">Expand</button>
+            <canvas id="uidSpecificCapacityDurationChart${index}"></canvas>
+          </div>
         </details>
       `;
       }).join('');
       const keyCapacityMetrics = capacitySensors.length ? `
         ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
         ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
-        ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Average Specific Capacity', formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4))}
         ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
       ` : '';
       const detailedCapacityMetrics = capacitySensors.length ? `
         ${wardMetric('Specific Capacity UIDs', formatNumber(capacityWard.uidCount || capacitySensors.length))}
         ${wardMetric('Valid Pumping Sessions', formatNumber(capacityWard.validSessions || 0))}
-        ${wardMetric('Average Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-        ${wardMetric('Maximum Specific Capacity', `${formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4)} x10^-6 m2/s`)}
-        ${wardMetric('Median Specific Capacity', `${formatNumber(medianValue(capacitySpecificValues), 4)} x10^-6 m2/s`)}
+        ${wardMetric('Average Specific Capacity', formatNumber(scaledSpecificCapacity(capacityWard.averageTransmissivityScaled, capacityWard.averageSpecificCapacityM2s), 4))}
+        ${wardMetric('Maximum Specific Capacity', formatNumber(scaledSpecificCapacity(capacityWard.maxTransmissivityScaled, capacityWard.maxSpecificCapacityM2s), 4))}
+        ${wardMetric('Median Specific Capacity', formatNumber(medianValue(capacitySpecificValues), 4))}
         ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
+        ${wardMetric('Specific Capacity UID List', uidChipList(capacitySensors, attentionUidSet))}
         ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(lowSpecificSensors, lowSpecificUidSet)}`, lowSpecificCount ? 'bad' : '')}
         ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(highInverseSensors, highInverseUidSet)}`, highInverseCount ? 'bad' : '')}
       ` : '';
@@ -2431,6 +2511,7 @@
               <div>
                 <h3>Specific Capacity</h3>
                 <p>Session-level pump performance using discharge divided by drawdown. Lower specific capacity or higher inverse specific capacity needs closer review.</p>
+                <p class="ward-table-note">Specific Capacity values in this panel are scaled for readability: shown value = actual m2/s value x 1,000,000.</p>
               </div>
               <button class="primary ward-specific-capacity-download" type="button" data-ward-no="${wardNumber(props)}">Download Ward Excel</button>
             </div>
@@ -2453,6 +2534,7 @@
                 ${wardMetric('Points used', formatNumber(slopeFit.pointCount || 0))}
               </section>
               <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
+              ${weeklyOutlierNote}
             `
             : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
           </section>
@@ -2480,6 +2562,76 @@
 
     const renderSpecificCapacityCharts = (specificCapacityData) => {
       const sensorsWithCapacity = specificCapacityData?.sensors || [];
+      const sessionDischargeLpm = (session) => {
+        const m3s = Number(session.lowestDischargeM3s);
+        return Number.isFinite(m3s) ? m3s * 60000 : null;
+      };
+      const sessionDurationMin = (session) => {
+        const seconds = Number(session.durationSeconds);
+        if (Number.isFinite(seconds)) return seconds / 60;
+        const minutes = Number(session.durationMin);
+        return Number.isFinite(minutes) ? minutes : null;
+      };
+      const drawSpecificCapacityScatter = (sensor, index, range = 'week') => {
+        const sessions = pointsForRange(sensor.sessions || [], range);
+        const rows = cleanedCapacitySeries(sessions, false).filter((row) => !row.isOutlier && Number.isFinite(row.value));
+        const scatterConfigs = [
+          {
+            canvas: document.getElementById(`uidSpecificCapacityDischargeChart${index}`),
+            label: 'Specific capacity vs discharge',
+            xTitle: 'Lowest Discharge (L/min)',
+            xDecimals: 1,
+            points: rows.map((row) => ({
+              x: sessionDischargeLpm(row.session),
+              y: row.value,
+              label: shortDateTimeLabel(row.session.time || row.session.label)
+            })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+          },
+          {
+            canvas: document.getElementById(`uidSpecificCapacityDurationChart${index}`),
+            label: 'Specific capacity vs pumping duration',
+            xTitle: 'Pumping Duration (min)',
+            xDecimals: 0,
+            points: rows.map((row) => ({
+              x: sessionDurationMin(row.session),
+              y: row.value,
+              label: shortDateTimeLabel(row.session.time || row.session.label)
+            })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+          }
+        ];
+
+        scatterConfigs.forEach((config) => {
+          if (!config.canvas) return;
+          if (config.canvas._chart) {
+            config.canvas._chart.destroy();
+            wardInlineCharts = wardInlineCharts.filter((chart) => chart !== config.canvas._chart);
+            config.canvas._chart = null;
+          }
+          config.canvas._chart = renderWardLineChart(config.canvas, [], [
+            {
+              label: config.label,
+              data: config.points,
+              borderColor: '#0f8f4d',
+              pointBackgroundColor: '#f8fafc',
+              pointBorderColor: '#0f8f4d',
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              showLine: false,
+              unit: 'x10^-6 m2/s'
+            }
+          ], {
+            chartType: 'scatter',
+            showLine: false,
+            reverseY: false,
+            xType: 'linear',
+            xTitle: config.xTitle,
+            xDecimals: config.xDecimals,
+            yTitle: 'Specific Capacity (x10^-6 m2/s)',
+            unit: 'x10^-6 m2/s',
+            bottomPadding: 18
+          });
+        });
+      };
       const drawSpecificCapacityChart = (sensor, index, mode = 'specific', range = 'all') => {
         const canvas = document.getElementById(`uidSpecificCapacityChart${index}`);
         if (!canvas) return;
@@ -2537,6 +2689,7 @@
           autoSkipXLabels: false,
           maxTicksLimit: labels.length || 1
         });
+        drawSpecificCapacityScatter(sensor, index, range);
       };
 
       sensorsWithCapacity.forEach((sensor, index) => {
@@ -2582,15 +2735,17 @@
       clearWardInlineCharts();
       renderSpecificCapacityCharts(specificCapacityData);
       if (!wardData) return;
-      const labels = (wardData.weekly || []).map((point) => point.label);
       const wardCanvas = document.getElementById('wardWeeklyChart');
       if (wardCanvas) {
-        const slopeFit = weeklySlopeFit(wardData.weekly || []);
+        const weeklyGroups = cleanWeeklyGroundwater(wardData.weekly || []);
+        const chartWeekly = weeklyGroups.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
+        const labels = chartWeekly.map((point) => point.label);
+        const slopeFit = weeklySlopeFit(chartWeekly);
         const slopeColor = Number(slopeFit.slopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.slopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
         renderWardLineChart(wardCanvas, labels, [
           {
             label: 'Average level',
-            data: (wardData.weekly || []).map((point) => point.averageLevel),
+            data: chartWeekly.map((point) => point.averageLevel),
             borderColor: '#244e9a',
             showLine: false
           },
@@ -2604,7 +2759,7 @@
             pointHoverRadius: 0,
             showLine: true
           }
-        ], { showLine: false, autoRotateXLabels: true });
+        ], { showLine: false, autoRotateXLabels: true, bottomPadding: 34, maxTicksLimit: 18 });
       }
 
       const renderUidModeChart = (sensor, index, mode = 'daily-level', range = 'all') => {

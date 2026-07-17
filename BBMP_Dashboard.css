@@ -850,6 +850,14 @@
       box-shadow: inset 4px 0 0 #dc2626;
     }
 
+    .uid-chart-card.specific-low-alert summary > span {
+      color: #991b1b;
+    }
+
+    .uid-chart-card.specific-low-alert summary {
+      background: #fff7f7;
+    }
+
     .uid-alert-label {
       display: inline-block;
       margin-left: 8px;
@@ -861,6 +869,11 @@
       font-weight: 800;
       padding: 3px 6px;
       vertical-align: middle;
+    }
+
+    .uid-alert-label.inverse {
+      background: #fff7ed;
+      color: #92400e;
     }
 
     .uid-chart-card summary {
@@ -980,8 +993,8 @@
     }
 
     .mini-chart-wrap.large {
-      height: 340px;
-      padding: 4px 4px 24px;
+      height: 390px;
+      padding: 4px 4px 52px;
     }
 
     .mini-chart-wrap canvas {
