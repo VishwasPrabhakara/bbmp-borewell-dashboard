@@ -1345,14 +1345,19 @@
 
       try {
         const payload = await fetchCapacity('');
+        window.__lastSpecificCapacityPayload = { wardNo, payload };
         if (hasValidSpecificCapacity(payload.ward) || (payload.sensors || []).length || payload.loadError) return payload;
-        return await fetchCapacity(`&retry=${Date.now()}`);
+        const retryPayload = await fetchCapacity(`&retry=${Date.now()}`);
+        window.__lastSpecificCapacityPayload = { wardNo, payload: retryPayload, retried: true };
+        return retryPayload;
       } catch (error) {
-        return {
+        const errorPayload = {
           ward: null,
           sensors: [],
           loadError: error?.message || 'Specific capacity API request failed.'
         };
+        window.__lastSpecificCapacityPayload = { wardNo, payload: errorPayload, error: true };
+        return errorPayload;
       }
     };
 
@@ -2421,7 +2426,9 @@
       const skippedCapacityReasons = (capacityDiagnostics.skippedSensors || []).slice(0, 5)
         .map((item) => `${htmlEscape(item.uid || '-')}: ${htmlEscape(item.reason || 'No valid pumping session')}`)
         .join('<br>');
-      const capacityMissingNote = specificCapacityData?.loadError
+      const capacityMissingNote = !specificCapacityData
+        ? '<div class="ward-note">Specific capacity data has not loaded for this ward yet. This does not mean there are no sessions. Refresh the ward or reopen it after the API finishes loading.</div>'
+        : specificCapacityData?.loadError
         ? `<div class="ward-note">Specific capacity sessions could not be loaded from the API for this ward. This does not mean there are no sessions; it means the ward-specific capacity endpoint failed or is temporarily unavailable. Try refreshing after a few minutes, or use the Ward Excel download if it is available.<br><br>${htmlEscape(specificCapacityData.loadError)}</div>`
         : capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
@@ -2429,7 +2436,7 @@
           : '')
         : (Number(capacityDiagnostics.candidateSensorsWithWaterAndDischarge || 0) > 0
           ? `<div class="ward-note">This ward has ${formatNumber(capacityDiagnostics.candidateSensorsWithWaterAndDischarge)} sensor(s) with both water-level and discharge data, but specific capacity cannot be calculated because no valid OFF-to-ON pumping session was found with positive duration, positive drawdown, and discharge during the pumping period.${skippedCapacityReasons ? `<br><br>${skippedCapacityReasons}` : ''}</div>`
-          : '<div class="ward-note">Specific capacity cannot be calculated for this ward because no sensor currently has both usable water-level and discharge data in the same pumping session.</div>');
+          : '<div class="ward-note">Specific capacity is not available in the API response for this ward. This may be an API/cache issue if the downloaded Excel shows valid sessions.</div>');
       const capacityPanels = capacitySensors.map((sensor, index) => {
         const uid = String(sensor.uid);
         const isLowSpecificUid = lowSpecificUidSet.has(uid);
@@ -3041,10 +3048,11 @@
         renderWardDetailCharts(wardData, capacityPayload);
       } catch (error) {
         const wardData = wardWeeklyByNo.get(selectedWardNo) || null;
+        const capacityPayload = await loadWardSpecificCapacity(selectedWardNo);
         activeWardData = wardData;
-        activeSpecificCapacityData = null;
-        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, null);
-        renderWardDetailCharts(wardData, null);
+        activeSpecificCapacityData = capacityPayload;
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
+        renderWardDetailCharts(wardData, capacityPayload);
         showToast(`Could not load ward weekly data for ward ${selectedWardNo}.`);
       }
     };
