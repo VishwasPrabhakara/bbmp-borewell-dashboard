@@ -191,6 +191,7 @@
     let wardIndicatorsByNo = new Map();
     const bangaloreCenter = [12.9716, 77.5946];
     const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
+    const WARD_WEEKLY_API_VERSION = 'ww-20260717-1';
     const SPECIFIC_CAPACITY_API_VERSION = 'sc-20260717-2';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -1237,15 +1238,12 @@
         });
 
       Promise.all([
-        fetch(`${API_BASE_URL}/api/qc/wards`),
-        fetch(`${API_BASE_URL}/api/indicators/wards`),
-        fetch(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}`),
+        fetchJsonWithRetry(`${API_BASE_URL}/api/qc/wards`, { wards: [] }),
+        fetchJsonWithRetry(`${API_BASE_URL}/api/indicators/wards`, { wards: [] }),
+        fetchJsonWithRetry(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}&cache_v=${WARD_WEEKLY_API_VERSION}`, { wards: [], weeks: [] }, 2),
         sharedPromise
-      ]).then(async ([wardQcResponse, indicatorsResponse, wardWeeklyResponse, shared]) => {
+      ]).then(async ([wardQcPayload, indicatorsPayload, wardWeeklyPayload, shared]) => {
         if (sequence !== loadSequence) return;
-        const wardQcPayload = wardQcResponse.ok ? await wardQcResponse.json() : { wards: [] };
-        const indicatorsPayload = indicatorsResponse.ok ? await indicatorsResponse.json() : { wards: [] };
-        const wardWeeklyPayload = wardWeeklyResponse.ok ? await wardWeeklyResponse.json() : { wards: [] };
         const criticalGroundwaterPayload = currentDataSource === 'kh'
           ? buildLocalCriticalGroundwater(wardWeeklyPayload)
           : { wards: [] };
@@ -1318,6 +1316,21 @@
       const ordered = (points || []).filter((point) => point.time).sort((a, b) => new Date(a.time) - new Date(b.time));
       const start = rangeStart(ordered, range);
       return ordered.filter((point) => !start || new Date(point.time) >= start);
+    };
+
+    const fetchJsonWithRetry = async (url, fallback, retries = 1) => {
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        try {
+          const separator = url.includes('?') ? '&' : '?';
+          const bust = attempt ? `${separator}retry=${Date.now()}` : '';
+          const response = await fetch(`${url}${bust}`);
+          if (response.ok) return response.json();
+          if (attempt === retries) return fallback;
+        } catch (error) {
+          if (attempt === retries) return fallback;
+        }
+      }
+      return fallback;
     };
 
     const loadWardSpecificCapacity = async (wardNo) => {
