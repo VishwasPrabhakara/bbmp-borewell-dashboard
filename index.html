@@ -2384,7 +2384,9 @@
       const skippedCapacityReasons = (capacityDiagnostics.skippedSensors || []).slice(0, 5)
         .map((item) => `${htmlEscape(item.uid || '-')}: ${htmlEscape(item.reason || 'No valid pumping session')}`)
         .join('<br>');
-      const capacityMissingNote = capacitySensors.length
+      const capacityMissingNote = specificCapacityData?.loadError
+        ? `<div class="ward-note">Specific capacity sessions could not be loaded from the API for this ward. This does not mean there are no sessions; it means the ward-specific capacity endpoint failed or is temporarily unavailable. Try refreshing after a few minutes, or use the Ward Excel download if it is available.<br><br>${htmlEscape(specificCapacityData.loadError)}</div>`
+        : capacitySensors.length
         ? (Number(capacityDiagnostics.sensorsWithoutValidSpecificCapacity || 0) > 0
           ? `<div class="ward-note">${formatNumber(capacityDiagnostics.sensorsWithoutValidSpecificCapacity)} sensor(s) in this ward have both water-level and discharge data, but were not used because no valid pumping session was found with positive duration, positive drawdown, and discharge inside the pumping period.${skippedCapacityReasons ? `<br><br>${skippedCapacityReasons}` : ''}</div>`
           : '')
@@ -2982,12 +2984,21 @@
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
       try {
-        const [response, capacityResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`),
-          fetch(`${API_BASE_URL}/api/specific-capacity/ward?ward_no=${encodeURIComponent(selectedWardNo)}`)
-        ]);
+        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
         const payload = response.ok ? await response.json() : { ward: null };
-        const capacityPayload = capacityResponse.ok ? await capacityResponse.json() : { ward: null, sensors: [] };
+        let capacityPayload = { ward: null, sensors: [] };
+        try {
+          const capacityResponse = await fetch(`${API_BASE_URL}/api/specific-capacity/ward?ward_no=${encodeURIComponent(selectedWardNo)}`);
+          capacityPayload = capacityResponse.ok
+            ? await capacityResponse.json()
+            : { ward: null, sensors: [], loadError: `Specific capacity API returned HTTP ${capacityResponse.status}.` };
+        } catch (capacityError) {
+          capacityPayload = {
+            ward: null,
+            sensors: [],
+            loadError: capacityError?.message || 'Specific capacity API request failed.'
+          };
+        }
         const capacityKey = normalizeWardNo(selectedWardNo);
         if (hasValidSpecificCapacity(capacityPayload.ward)) {
           specificCapacityByWardNo.set(normalizeWardNo(selectedWardNo), capacityPayload.ward);
