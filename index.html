@@ -2397,7 +2397,7 @@
         const isHighInverseUid = highInverseUidSet.has(uid);
         const isAttentionUid = attentionUidSet.has(uid);
         return `
-        <details class="uid-chart-card ${isAttentionUid ? 'capacity-alert' : ''} ${isLowSpecificUid ? 'specific-low-alert' : ''} ${isHighInverseUid ? 'inverse-high-alert' : ''}">
+        <details class="uid-chart-card ${isAttentionUid ? 'capacity-alert' : ''} ${isLowSpecificUid ? 'specific-low-alert' : ''} ${isHighInverseUid ? 'inverse-high-alert' : ''}" ${index === 0 ? 'open' : ''}>
           <summary>
             <span>${htmlEscape(uid)}${isLowSpecificUid ? '<em class="uid-alert-label">Low Specific Capacity</em>' : ''}${isHighInverseUid ? '<em class="uid-alert-label inverse">High Inverse</em>' : ''}</span>
             <small>Avg ${formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4)} | Pump ${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min/day</small>
