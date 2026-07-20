@@ -512,7 +512,7 @@
       fillOpacity: 0
     });
     const wardStyle = (feature) => {
-      const critical = criticalGroundwaterByNo.get(wardNumber(feature?.properties || {}));
+      const critical = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(feature?.properties || {})));
       if (currentDataSource === 'kh' && critical?.groundwaterStatus === 'Critical') {
         return {
           color: '#111827',
@@ -1255,12 +1255,17 @@
         fetchJsonWithRetry(`${API_BASE_URL}/api/qc/wards`, { wards: [] }),
         fetchJsonWithRetry(`${API_BASE_URL}/api/indicators/wards`, { wards: [] }),
         fetchJsonWithRetry(`${API_BASE_URL}/api/ward-weekly-levels?${sourceQuery()}&cache_v=${WARD_WEEKLY_API_VERSION}`, { wards: [], weeks: [] }, 2),
+        currentDataSource === 'kh'
+          ? fetchJsonWithRetry(`${API_BASE_URL}/api/critical-wards-groundwater?cache_v=${WARD_WEEKLY_API_VERSION}`, { wards: [] }, 2)
+          : Promise.resolve({ wards: [] }),
         sharedPromise
-      ]).then(async ([wardQcPayload, indicatorsPayload, wardWeeklyPayload, shared]) => {
+      ]).then(async ([wardQcPayload, indicatorsPayload, wardWeeklyPayload, criticalApiPayload, shared]) => {
         if (sequence !== loadSequence) return;
-        const criticalGroundwaterPayload = currentDataSource === 'kh'
-          ? buildLocalCriticalGroundwater(wardWeeklyPayload)
-          : { wards: [] };
+        const criticalGroundwaterPayload = currentDataSource === 'kh' && (criticalApiPayload?.wards || []).length
+          ? criticalApiPayload
+          : currentDataSource === 'kh'
+            ? buildLocalCriticalGroundwater(wardWeeklyPayload)
+            : { wards: [] };
         const loaded = {
           payload,
           qcPayload,
