@@ -1509,7 +1509,12 @@
           },
           plugins: {
             legend: {
-              display: true
+              display: true,
+              labels: {
+                usePointStyle: true,
+                boxWidth: 16,
+                boxHeight: 10
+              }
             },
             tooltip: {
               callbacks: {
@@ -1783,27 +1788,15 @@
             borderColor: '#475569',
             borderDash: [6, 5],
             borderWidth: 2,
+            pointStyle: 'line',
             pointRadius: 0,
             pointHoverRadius: 0,
             spanGaps: true,
             tension: 0
           },
           {
-            label: 'Off level',
-            data: levelPointData(plotPoints, cleanedSet, 'offLevel'),
-            borderColor: 'rgba(0,0,0,0)',
-            pointBorderColor: '#1d4ed8',
-            pointBackgroundColor: '#dbeafe',
-            pointStyle: 'rectRot',
-            pointBorderWidth: 2,
-            borderWidth: 0,
-            pointRadius: 4,
-            pointHoverRadius: 7,
-            showLine: false
-          },
-          {
             label: 'On level',
-            data: levelPointData(plotPoints, cleanedSet, 'onLevel'),
+            data: sessionLevelPointData(plotPoints, cleanedSet, 'on'),
             borderColor: 'rgba(0,0,0,0)',
             pointBorderColor: '#15803d',
             pointBackgroundColor: '#dcfce7',
@@ -1812,6 +1805,19 @@
             borderWidth: 0,
             pointRadius: 5,
             pointHoverRadius: 8,
+            showLine: false
+          },
+          {
+            label: 'Off level',
+            data: sessionLevelPointData(plotPoints, cleanedSet, 'off'),
+            borderColor: 'rgba(0,0,0,0)',
+            pointBorderColor: '#1d4ed8',
+            pointBackgroundColor: '#dbeafe',
+            pointStyle: 'rectRot',
+            pointBorderWidth: 2,
+            borderWidth: 0,
+            pointRadius: 4,
+            pointHoverRadius: 7,
             showLine: false
           },
           {
@@ -1912,11 +1918,11 @@
         .sort((a, b) => stopTimestamp(a) - stopTimestamp(b));
       if (sessions.length) {
         return sessions.flatMap((point) => {
-          const offX = startTimestamp(point);
-          const onX = stopTimestamp(point);
+          const onX = startTimestamp(point);
+          const offX = stopTimestamp(point);
           return [
-            { x: offX, y: point.offLevel, label: label(offX, 'OFF') },
-            { x: onX, y: point.onLevel, label: label(onX, 'ON') }
+            { x: onX, y: point.offLevel, label: label(onX, 'ON') },
+            { x: offX, y: point.onLevel, label: label(offX, 'OFF') }
           ];
         });
       }
@@ -1925,7 +1931,11 @@
         .sort((a, b) => stopTimestamp(a) - stopTimestamp(b))
         .map((point) => ({ x: stopTimestamp(point), y: point.primary, label: label(stopTimestamp(point)) }));
     };
-    const levelPointData = (points, cleanedSet, key) => {
+    const sessionLevelPointData = (points, cleanedSet, semantic) => {
+      const key = semantic === 'on' ? 'offLevel' : 'onLevel';
+      return levelPointData(points, cleanedSet, key, semantic);
+    };
+    const levelPointData = (points, cleanedSet, key, semantic = '') => {
       const hasSessionPairs = ['offLevel', 'onLevel'].includes(key)
         && (points || []).some((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel));
       return (points || [])
@@ -1939,12 +1949,12 @@
         .map((point) => {
           const stop = new Date(point.stop_time || point.time).getTime();
           const durationMin = Number(point.session_duration_min);
-          const x = key === 'offLevel' && hasSessionPairs && Number.isFinite(durationMin) && durationMin > 0
+          const x = semantic === 'on' && hasSessionPairs && Number.isFinite(durationMin) && durationMin > 0
             ? stop - durationMin * 60000
             : stop;
           const y = Number(point[key]);
           return Number.isFinite(x) && Number.isFinite(y)
-            ? { x, y, label: new Date(x).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) }
+            ? { x, y, label: `${new Date(x).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}${semantic ? ` ${semantic.toUpperCase()}` : ''}` }
             : { x, y: null };
         });
     };
@@ -2450,7 +2460,14 @@
           },
           interaction: { mode: 'nearest', intersect: false },
           plugins: {
-            legend: { display: true },
+            legend: {
+              display: true,
+              labels: {
+                usePointStyle: true,
+                boxWidth: 16,
+                boxHeight: 10
+              }
+            },
             tooltip: {
               callbacks: {
                 title(context) {
@@ -2953,6 +2970,7 @@
               borderColor: '#475569',
               borderDash: [6, 5],
               borderWidth: 2,
+              pointStyle: 'line',
               pointRadius: 0,
               pointHoverRadius: 0,
               showLine: true,
@@ -2973,22 +2991,8 @@
               unit: 'ft'
             }] : []),
             {
-              label: 'Off level',
-              data: levelPointData(daily, cleanedDailySet, 'offLevel'),
-              borderColor: 'rgba(0,0,0,0)',
-              pointBorderColor: '#1d4ed8',
-              pointBackgroundColor: '#dbeafe',
-              pointStyle: 'rectRot',
-              pointBorderWidth: 2,
-              borderWidth: 0,
-              pointRadius: 4,
-              pointHoverRadius: 7,
-              showLine: false,
-              unit: 'ft'
-            },
-            {
               label: 'On level',
-              data: levelPointData(daily, cleanedDailySet, 'onLevel'),
+              data: sessionLevelPointData(daily, cleanedDailySet, 'on'),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#15803d',
               pointBackgroundColor: '#dcfce7',
@@ -2997,6 +3001,20 @@
               borderWidth: 0,
               pointRadius: 5,
               pointHoverRadius: 8,
+              showLine: false,
+              unit: 'ft'
+            },
+            {
+              label: 'Off level',
+              data: sessionLevelPointData(daily, cleanedDailySet, 'off'),
+              borderColor: 'rgba(0,0,0,0)',
+              pointBorderColor: '#1d4ed8',
+              pointBackgroundColor: '#dbeafe',
+              pointStyle: 'rectRot',
+              pointBorderWidth: 2,
+              borderWidth: 0,
+              pointRadius: 4,
+              pointHoverRadius: 7,
               showLine: false,
               unit: 'ft'
             },
