@@ -298,6 +298,7 @@
     const sourceQuery = () => `source=${encodeURIComponent(currentDataSource)}`;
     const sourceDisplayName = () => currentDataSource === 'vendor' ? 'Nimblevision' : 'KrishiHrudaya';
     const LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK = 0.1;
+    const TREND_SIGNIFICANCE_ALPHA = 0.05;
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -370,24 +371,18 @@
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const criticalReasonHtml = (critical) => {
       if (!critical || critical.groundwaterStatus !== 'Critical') return '';
-      const votes = Number(critical.declineMethodVotes || 0);
-      const linearValue = Number(critical.linearSlopeFtPerWeek);
-      const mkValue = Number(critical.mannKendallS);
-      const slope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 4);
-      const mk = critical.mannKendallS == null ? '-' : formatNumber(critical.mannKendallS, 0);
-      const points = formatNumber(critical.pointCount || 0);
-      const methodRows = [
-        `Linear slope ${Number.isFinite(linearValue) && linearValue > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'triggered' : 'did not trigger'} (${slope})`,
-        `Mann-Kendall ${Number.isFinite(mkValue) && mkValue > 0 ? 'triggered' : 'did not trigger'} (S = ${mk})`
-      ];
+      const slope = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 4);
+      const pValue = critical.mannKendallPValue == null ? '-' : formatNumber(critical.mannKendallPValue, 4);
+      const classified = formatNumber(critical.classifiedSensorCount || 0);
+      const declining = formatNumber(critical.confirmedDecliningSensorCount || 0);
       return `
         <div class="critical-reason">
           <strong>Why this ward is critical</strong>
-          <p>This ward is flagged because groundwater depth is increasing over time, which means the water level is moving farther below ground.</p>
+          <p>Groundwater depth is increasing significantly and the trend is independently supported by borewells within the ward.</p>
           <ul>
-            <li>${votes} of 2 decline checks agree.</li>
-            ${methodRows.map((row) => `<li>${row}</li>`).join('')}
-            <li>${points} weekly groundwater points were available for the trend check.</li>
+            <li>Theil-Sen decline rate: ${slope}.</li>
+            <li>Mann-Kendall p-value: ${pValue} (confirmed when p <= ${TREND_SIGNIFICANCE_ALPHA}).</li>
+            <li>${declining} of ${classified} classifiable borewells independently show confirmed decline.</li>
           </ul>
         </div>
       `;
@@ -603,7 +598,7 @@
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
-        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> linear slope and Mann-Kendall both indicate decline; slope ${formatTrend(criticalGw.linearSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
+        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> significant Theil-Sen/Mann-Kendall decline supported by ${formatNumber(criticalGw.confirmedDecliningSensorCount || 0)} borewells; median borewell rate ${formatTrend(criticalGw.medianSensorTheilSenSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -2197,6 +2192,9 @@
           ? sortedSlopes[Math.floor(sortedSlopes.length / 2)]
           : (sortedSlopes[(sortedSlopes.length / 2) - 1] + sortedSlopes[sortedSlopes.length / 2]) / 2
         : null;
+      const senIntercept = Number.isFinite(senSlope)
+        ? medianValue(points.map((point) => point.y - (senSlope * point.x)))
+        : null;
       const tieCounts = new Map();
       points.forEach((point) => {
         const key = String(Number(point.y).toFixed(6));
@@ -2230,7 +2228,11 @@
         trendData: weekly.map((point, index) => {
           const x = Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index;
           const predicted = intercept + (slopeFtPerWeek * x);
-          return validIndexes.has(x) ? Math.max(0, predicted) : null;
+          return validIndexes.has(x) ? predicted : null;
+        }),
+        senTrendData: weekly.map((point, index) => {
+          const x = Number.isFinite(Number(point._xIndex)) ? Number(point._xIndex) : index;
+          return validIndexes.has(x) && Number.isFinite(senIntercept) ? senIntercept + (senSlope * x) : null;
         }),
         pointCount: points.length
       };
@@ -2245,41 +2247,40 @@
     const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
       const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
         const fit = weeklySlopeFit(ward.weekly || []);
-        const linear = Number(fit.slopeFtPerWeek);
         const sen = Number(fit.senSlopeFtPerWeek);
         const mk = Number(fit.mannKendallS);
+        const pValue = Number(fit.mannKendallPValue);
         const pointCount = Number(fit.pointCount || 0);
-        const votes = [
-          Number.isFinite(linear) && linear > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK,
-          Number.isFinite(mk) && mk > 0
-        ].filter(Boolean).length;
+        const significantDecline = pointCount >= 4
+          && sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+          && mk > 0
+          && pValue <= TREND_SIGNIFICANCE_ALPHA;
         return {
           wardNo: ward.wardNo,
           wardName: ward.wardName,
-          groundwaterStatus: 'Normal',
-          groundwaterDirection: pointCount >= 4 ? 'Mostly stable' : 'Not computed',
-          declineMethodVotes: votes,
-          declineStrengthFtPerWeek: Number.isFinite(linear) ? linear : null,
-          linearSlopeFtPerWeek: Number.isFinite(linear) ? Number(linear.toFixed(4)) : null,
+          groundwaterStatus: significantDecline ? 'Watch' : 'Normal',
+          groundwaterDirection: significantDecline ? 'Possible decline' : pointCount >= 4 ? 'Mostly stable' : 'Not computed',
+          declineStrengthFtPerWeek: Number.isFinite(sen) ? sen : null,
+          linearSlopeFtPerWeek: Number.isFinite(Number(fit.slopeFtPerWeek)) ? Number(Number(fit.slopeFtPerWeek).toFixed(4)) : null,
           senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
           mannKendallS: Number.isFinite(mk) ? mk : null,
+          mannKendallPValue: Number.isFinite(pValue) ? pValue : null,
           pointCount
         };
       });
-      const red = candidates
-        .filter((ward) => ward.pointCount >= 4 && ward.declineMethodVotes === 2 && Number.isFinite(Number(ward.declineStrengthFtPerWeek)))
-        .sort((a, b) => Number(b.declineStrengthFtPerWeek) - Number(a.declineStrengthFtPerWeek))
-        .slice(0, 60);
-      const redSet = new Set(red.map((ward) => normalizeWardNo(ward.wardNo)));
-      return {
-        wards: candidates.map((ward) => redSet.has(normalizeWardNo(ward.wardNo))
-          ? { ...ward, groundwaterStatus: 'Critical', groundwaterDirection: 'Declining' }
-          : ward)
-      };
+      return { wards: candidates };
     };
-    const indexedTrendFit = (values = []) => {
+    const indexedTrendFit = (values = [], times = []) => {
+      const validTimes = times.map((time) => new Date(time).getTime());
+      const firstTime = validTimes.find(Number.isFinite);
       const points = values
-        .map((value, index) => ({ x: index, y: Number(value) }))
+        .map((value, index) => ({
+          x: Number.isFinite(validTimes[index]) && Number.isFinite(firstTime)
+            ? (validTimes[index] - firstTime) / 86400000
+            : index,
+          index,
+          y: value === null || value === undefined || value === '' ? Number.NaN : Number(value)
+        }))
         .filter((point) => Number.isFinite(point.y));
       if (points.length < 2) {
         return {
@@ -2306,7 +2307,9 @@
       }
       const slope = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / denominator;
       const intercept = meanY - slope * meanX;
-      const validIndexes = new Set(points.map((point) => point.x));
+      const totalSquares = points.reduce((sum, point) => sum + ((point.y - meanY) ** 2), 0);
+      const residualSquares = points.reduce((sum, point) => sum + ((point.y - (intercept + slope * point.x)) ** 2), 0);
+      const pointByIndex = new Map(points.map((point) => [point.index, point]));
       const pairSlopes = [];
       let mannKendallS = 0;
       for (let i = 0; i < points.length - 1; i += 1) {
@@ -2322,6 +2325,9 @@
         ? sortedSlopes.length % 2
           ? sortedSlopes[Math.floor(sortedSlopes.length / 2)]
           : (sortedSlopes[(sortedSlopes.length / 2) - 1] + sortedSlopes[sortedSlopes.length / 2]) / 2
+        : null;
+      const senIntercept = Number.isFinite(senSlope)
+        ? medianValue(points.map((point) => point.y - (senSlope * point.x)))
         : null;
       const variance = (points.length * (points.length - 1) * ((2 * points.length) + 5)) / 18;
       const mkZ = variance > 0
@@ -2340,15 +2346,24 @@
         senSlope,
         mannKendallS,
         mannKendallPValue: mkP,
-        trendData: values.map((_, index) => validIndexes.has(index) ? intercept + slope * index : null),
-        pointCount: points.length
+        linearR2: totalSquares > 0 ? 1 - (residualSquares / totalSquares) : null,
+        trendData: values.map((_, index) => pointByIndex.has(index) && Number.isFinite(senIntercept)
+          ? senIntercept + (senSlope * pointByIndex.get(index).x)
+          : null),
+        pointCount: points.length,
+        spanDays: points.length > 1 ? points[points.length - 1].x - points[0].x : 0
       };
     };
-    const performanceTrendLabel = (slope, inverseMode = false) => {
-      if (!Number.isFinite(Number(slope))) return 'Not computed';
-      if (Math.abs(Number(slope)) < 0.0001) return 'Stable';
-      if (inverseMode) return Number(slope) > 0 ? 'Worsening' : 'Improving';
-      return Number(slope) > 0 ? 'Improving' : 'Worsening';
+    const performanceTrendLabel = (fit, median, inverseMode = false) => {
+      if (!fit || fit.pointCount < 5 || Number(fit.spanDays) < 14 || !Number.isFinite(Number(fit.senSlope)) || !Number.isFinite(Number(median)) || Number(median) <= 0) {
+        return 'Insufficient temporal data';
+      }
+      const percentPerMonth = (Number(fit.senSlope) * 30.4375 / Number(median)) * 100;
+      if (Math.abs(percentPerMonth) < 5) return 'Stable';
+      const worsening = inverseMode ? percentPerMonth > 0 : percentPerMonth < 0;
+      const significant = Number(fit.mannKendallPValue) <= TREND_SIGNIFICANCE_ALPHA;
+      if (significant) return worsening ? 'Confirmed worsening' : 'Confirmed improving';
+      return worsening ? 'Possible worsening' : 'Possible improving';
     };
     const capacityOutlierBounds = (values = []) => {
       const sorted = values.map(Number).filter(Number.isFinite).sort((a, b) => a - b);
@@ -2374,12 +2389,28 @@
     };
     const capacityTrendSummary = (sessions = [], inverseMode = false) => {
       const rows = cleanedCapacitySeries(sessions, inverseMode);
-      const values = rows.map((row) => row.isOutlier ? null : row.value);
-      const fit = indexedTrendFit(values);
+      const daily = new Map();
+      rows.filter((row) => !row.isOutlier && Number.isFinite(row.value)).forEach((row) => {
+        const time = row.session.time || row.session.date || row.session.label;
+        const date = new Date(time);
+        if (Number.isNaN(date.getTime())) return;
+        const key = date.toISOString().slice(0, 10);
+        if (!daily.has(key)) daily.set(key, []);
+        daily.get(key).push(row.value);
+      });
+      const dailyRows = Array.from(daily.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      const values = dailyRows.map(([, items]) => medianValue(items));
+      const times = dailyRows.map(([day]) => day);
+      const fit = indexedTrendFit(values, times);
+      const seriesMedian = medianValue(values);
       return {
         fit,
         outlierCount: rows.filter((row) => row.isOutlier).length,
-        trend: performanceTrendLabel(fit.slope, inverseMode)
+        dailyPointCount: dailyRows.length,
+        percentPerMonth: Number.isFinite(Number(fit.senSlope)) && Number(seriesMedian) > 0
+          ? (Number(fit.senSlope) * 30.4375 / Number(seriesMedian)) * 100
+          : null,
+        trend: performanceTrendLabel(fit, seriesMedian, inverseMode)
       };
     };
     const percentileValue = (values = [], percentile = 0.5) => {
@@ -2390,6 +2421,27 @@
       const upper = Math.ceil(position);
       if (lower === upper) return sorted[lower];
       return sorted[lower] + ((sorted[upper] - sorted[lower]) * (position - lower));
+    };
+    const jacobDischargeFit = (sessions = []) => {
+      const points = sessions.map((session) => ({
+        x: Number(session.lowestDischargeM3s) * 60000,
+        inverse: Number(session.inverseSpecificCapacitySPerM2)
+      })).filter((point) => Number.isFinite(point.x) && point.x > 0 && Number.isFinite(point.inverse) && point.inverse > 0);
+      if (points.length < 3) return null;
+      const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+      const meanY = points.reduce((sum, point) => sum + point.inverse, 0) / points.length;
+      const denominator = points.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
+      if (!denominator) return null;
+      const c = points.reduce((sum, point) => sum + ((point.x - meanX) * (point.inverse - meanY)), 0) / denominator;
+      const b = meanY - (c * meanX);
+      const totalSquares = points.reduce((sum, point) => sum + ((point.inverse - meanY) ** 2), 0);
+      const residualSquares = points.reduce((sum, point) => sum + ((point.inverse - (b + c * point.x)) ** 2), 0);
+      return {
+        b,
+        c,
+        r2: totalSquares > 0 ? 1 - (residualSquares / totalSquares) : null,
+        points: points.slice().sort((a, bPoint) => a.x - bPoint.x)
+      };
     };
     const percentileClass = (value, lowCut, highCut, inverseMode = false) => {
       const number = Number(value);
@@ -2531,8 +2583,14 @@
         <details class="uid-chart-card">
           <summary>
             <span>${sensor.uid}</span>
-            <small>${formatTrend(sensor.dropPerDay, 'ft/day', 2)}</small>
+            <small>${htmlEscape(sensor.groundwaterTrend?.classification || 'Not computed')} | ${formatTrend(sensor.groundwaterTrend?.theilSenSlopeFtPerWeek, 'ft/week', 2)}</small>
           </summary>
+          <div class="ward-summary-grid compact">
+            ${wardMetric('Groundwater Classification', sensor.groundwaterTrend?.classification || 'Not computed', sensor.groundwaterTrend?.classification === 'Declining' ? 'bad' : sensor.groundwaterTrend?.classification === 'Improving' ? 'good' : '')}
+            ${wardMetric('Theil-Sen Rate', formatTrend(sensor.groundwaterTrend?.theilSenSlopeFtPerWeek, 'ft/week', 2), slopeClass(sensor.groundwaterTrend?.theilSenSlopeFtPerWeek))}
+            ${wardMetric('Mann-Kendall p-value', sensor.groundwaterTrend?.mannKendallPValue == null ? '-' : formatNumber(sensor.groundwaterTrend.mannKendallPValue, 3))}
+            ${wardMetric('Weekly Values Used', formatNumber(sensor.groundwaterTrend?.usableWeeklyValues || 0))}
+          </div>
           ${sensor.dropPerDay == null ? '<p class="uid-note">Drop/day is blank because this UID has fewer than two valid weekly values to compare.</p>' : ''}
           ${(sensor.dailyLevels || []).length || (sensor.points || []).length ? `
             <div class="uid-mode-tabs" data-uid-index="${index}">
@@ -2590,7 +2648,24 @@
       ));
       const lowSpecificUidSet = new Set(lowSpecificSensors.map((sensor) => String(sensor.uid)));
       const highInverseUidSet = new Set(highInverseSensors.map((sensor) => String(sensor.uid)));
-      const attentionUidSet = new Set([...lowSpecificUidSet, ...highInverseUidSet]);
+      const worseningCapacitySensors = capacitySensors.filter((sensor) => {
+        const analysis = capacityAnalyses.get(String(sensor.uid));
+        return analysis?.specific.trend === 'Confirmed worsening' || analysis?.inverse.trend === 'Confirmed worsening';
+      });
+      const capacityTrendEligibleSensors = capacitySensors.filter((sensor) => (
+        capacityAnalyses.get(String(sensor.uid))?.specific.trend !== 'Insufficient temporal data'
+      ));
+      const medianCapacityChangePercentMonth = medianValue(capacityTrendEligibleSensors
+        .map((sensor) => capacityAnalyses.get(String(sensor.uid))?.specific.percentPerMonth)
+        .filter(Number.isFinite));
+      const wardCapacityStatus = capacityTrendEligibleSensors.length < 2
+        ? 'Insufficient temporal data'
+        : worseningCapacitySensors.length / capacityTrendEligibleSensors.length >= 0.5
+          && Number(medianCapacityChangePercentMonth) <= -5
+          ? 'Needs attention'
+          : 'Stable / mixed';
+      const worseningCapacityUidSet = new Set(worseningCapacitySensors.map((sensor) => String(sensor.uid)));
+      const attentionUidSet = new Set([...lowSpecificUidSet, ...highInverseUidSet, ...worseningCapacityUidSet]);
       const uidChipList = (items, dangerSet = new Set()) => items.length
         ? `<div class="uid-list capacity-uid-list">${items.map((sensor) => {
           const uid = String(sensor.uid);
@@ -2628,12 +2703,12 @@
             ${wardMetric('Average Specific Capacity', formatNumber(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), 4))}
             ${wardMetric('Maximum Specific Capacity', formatNumber(scaledSpecificCapacity(sensor.maxTransmissivityScaled, sensor.maxSpecificCapacityM2s), 4))}
             ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(sensor.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
-            ${wardMetric('Specific Capacity Class', percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut))}
-            ${wardMetric('Inverse Specific Capacity Class', percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true))}
+            ${wardMetric('Specific Capacity Class (within ward)', percentileClass(scaledSpecificCapacity(sensor.averageTransmissivityScaled, sensor.averageSpecificCapacityM2s), specificLowCut, specificHighCut))}
+            ${wardMetric('Inverse Class (within ward)', percentileClass(Number(sensor.averageInverseSpecificCapacitySPerM2), inverseLowCut, inverseHighCut, true))}
             ${wardMetric('Avg Pump/day', `${formatNumber(sensor.averagePumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Max Pump/day', `${formatNumber(sensor.maxPumpingMinutesPerDay, 1)} min`)}
             ${wardMetric('Specific Capacity Trend', capacityAnalyses.get(String(sensor.uid))?.specific.trend || 'Not computed')}
-            ${wardMetric('Specific Capacity Sen Slope', capacityAnalyses.get(String(sensor.uid))?.specific.fit.senSlope == null ? '-' : formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.fit.senSlope, 4))}
+            ${wardMetric('Specific Capacity Theil-Sen Rate', capacityAnalyses.get(String(sensor.uid))?.specific.percentPerMonth == null ? '-' : `${formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.percentPerMonth, 1)}%/month`)}
             ${wardMetric('Specific Capacity MK p-value', capacityAnalyses.get(String(sensor.uid))?.specific.fit.mannKendallPValue == null ? '-' : formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.fit.mannKendallPValue, 3))}
             ${wardMetric('Specific Capacity Outliers', formatNumber(capacityAnalyses.get(String(sensor.uid))?.specific.outlierCount || 0))}
             ${wardMetric('Inverse Specific Capacity Trend', capacityAnalyses.get(String(sensor.uid))?.inverse.trend || 'Not computed')}
@@ -2647,6 +2722,7 @@
             <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
             <button type="button" data-sc-mode="inverse">Inverse Specific Capacity</button>
             <button type="button" data-sc-mode="discharge">SC vs Discharge</button>
+            <button type="button" data-sc-mode="inverse-discharge">Inverse vs Discharge</button>
             <button type="button" data-sc-mode="duration">SC vs Pumping Time</button>
           </div>
           <div class="uid-range-tabs sc-range-tabs" data-sc-index="${index}">
@@ -2677,9 +2753,12 @@
         ${wardMetric('Average Inverse Specific Capacity', `${formatNumber(capacityWard.averageInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Maximum Inverse Specific Capacity', `${formatNumber(capacityWard.maxInverseSpecificCapacitySPerM2, 0)} s/m2`)}
         ${wardMetric('Median Inverse Specific Capacity', `${formatNumber(medianValue(capacityInverseValues), 0)} s/m2`)}
+        ${wardMetric('Ward Performance Trend', wardCapacityStatus, wardCapacityStatus === 'Needs attention' ? 'bad' : '')}
+        ${wardMetric('Median Specific Capacity Change', medianCapacityChangePercentMonth == null ? '-' : `${formatNumber(medianCapacityChangePercentMonth, 1)}%/month`, Number(medianCapacityChangePercentMonth) < -5 ? 'bad' : '')}
         ${wardMetric('Specific Capacity UID List', uidChipList(capacitySensors, attentionUidSet))}
         ${wardMetric('Low Specific Capacity UIDs', `${formatNumber(lowSpecificCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(lowSpecificSensors, lowSpecificUidSet)}`, lowSpecificCount ? 'bad' : '')}
         ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(highInverseSensors, highInverseUidSet)}`, highInverseCount ? 'bad' : '')}
+        ${wardMetric('Confirmed Worsening UIDs', `${formatNumber(worseningCapacitySensors.length)} / ${formatNumber(capacitySensors.length)}${uidChipList(worseningCapacitySensors, worseningCapacityUidSet)}`, worseningCapacitySensors.length ? 'bad' : '')}
       ` : '';
 
       return `
@@ -2731,10 +2810,10 @@
           ${hasWardWeeklyData
             ? `
               <section class="ward-summary-grid compact slope-strip">
-                ${wardMetric('Linear slope', formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Theil-Sen rate', formatTrend(criticalGw?.medianSensorTheilSenSlopeFtPerWeek ?? slopeFit.senSlopeFtPerWeek, 'ft/week', 2), slopeClass(criticalGw?.medianSensorTheilSenSlopeFtPerWeek ?? slopeFit.senSlopeFtPerWeek))}
                 ${wardMetric('Mann-Kendall', slopeFit.mannKendallTrend || 'Not computed', slopeClass(slopeFit.mannKendallS))}
                 ${wardMetric('MK p-value', slopeFit.mannKendallPValue == null ? '-' : formatNumber(slopeFit.mannKendallPValue, 3))}
-                ${wardMetric('Visual trend', slopeLabel(slopeFit.slopeFtPerWeek), slopeClass(slopeFit.slopeFtPerWeek))}
+                ${wardMetric('Ward Classification', criticalGw?.groundwaterStatus || slopeLabel(slopeFit.senSlopeFtPerWeek), criticalGw?.groundwaterStatus === 'Critical' ? 'bad' : '')}
                 ${wardMetric('Points used', formatNumber(slopeFit.pointCount || 0))}
               </section>
               <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
@@ -2786,16 +2865,24 @@
         }
         const inverseMode = mode === 'inverse';
         const sessions = pointsForRange(sensor.sessions || [], range);
-        if (mode === 'discharge' || mode === 'duration') {
-          const rows = cleanedCapacitySeries(sessions, false).filter((row) => !row.isOutlier && Number.isFinite(row.value));
+        if (mode === 'discharge' || mode === 'inverse-discharge' || mode === 'duration') {
+          const inverseDischargeMode = mode === 'inverse-discharge';
+          const rows = cleanedCapacitySeries(sessions, inverseDischargeMode).filter((row) => !row.isOutlier && Number.isFinite(row.value));
           const points = rows.map((row) => ({
-            x: mode === 'discharge' ? sessionDischargeLpm(row.session) : sessionDurationMin(row.session),
+            x: mode === 'duration' ? sessionDurationMin(row.session) : sessionDischargeLpm(row.session),
             y: row.value,
             label: shortDateTimeLabel(row.session.time || row.session.label)
           })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+          const jacob = mode === 'duration' ? null : jacobDischargeFit(rows.map((row) => row.session));
+          const modelPoints = jacob ? jacob.points.map((point) => ({
+            x: point.x,
+            y: inverseDischargeMode
+              ? jacob.b + (jacob.c * point.x)
+              : 1000000 / (jacob.b + (jacob.c * point.x))
+          })).filter((point) => Number.isFinite(point.y) && point.y > 0) : [];
           canvas._chart = renderWardLineChart(canvas, [], [
             {
-              label: mode === 'discharge' ? 'Specific capacity vs discharge' : 'Specific capacity vs pumping time',
+              label: inverseDischargeMode ? 'Inverse specific capacity vs discharge' : mode === 'discharge' ? 'Specific capacity vs discharge' : 'Specific capacity vs pumping time',
               data: points,
               borderColor: '#0f8f4d',
               pointBackgroundColor: '#f8fafc',
@@ -2803,17 +2890,26 @@
               pointRadius: 4,
               pointHoverRadius: 7,
               showLine: false,
-              unit: 'x10^-6 m2/s'
-            }
+              unit: inverseDischargeMode ? 's/m2' : 'x10^-6 m2/s'
+            },
+            ...(modelPoints.length ? [{
+              label: `${inverseDischargeMode ? 'Jacob linear model' : 'Jacob reciprocal curve'} (R2 ${formatNumber(jacob.r2, 3)})`,
+              data: modelPoints,
+              borderColor: '#dc2626',
+              borderWidth: 3,
+              pointRadius: 0,
+              showLine: true,
+              unit: inverseDischargeMode ? 's/m2' : 'x10^-6 m2/s'
+            }] : [])
           ], {
             chartType: 'scatter',
             showLine: false,
             reverseY: false,
             xType: 'linear',
-            xTitle: mode === 'discharge' ? 'Lowest Discharge (L/min)' : 'Pumping Time (min)',
-            xDecimals: mode === 'discharge' ? 1 : 0,
-            yTitle: 'Specific Capacity (x10^-6 m2/s)',
-            unit: 'x10^-6 m2/s',
+            xTitle: mode === 'duration' ? 'Pumping Time (min)' : 'Lowest Discharge (L/min)',
+            xDecimals: mode === 'duration' ? 0 : 1,
+            yTitle: inverseDischargeMode ? 'Inverse Specific Capacity (s/m2)' : 'Specific Capacity (x10^-6 m2/s)',
+            unit: inverseDischargeMode ? 's/m2' : 'x10^-6 m2/s',
             bottomPadding: 18
           });
           return;
@@ -2822,9 +2918,12 @@
         const rows = cleanedCapacitySeries(sessions, inverseMode);
         const values = rows.map((row) => row.isOutlier ? null : row.value);
         const outlierValues = rows.map((row) => row.isOutlier ? row.value : null);
-        const fit = indexedTrendFit(values);
-        const trendColor = performanceTrendLabel(fit.slope, inverseMode) === 'Worsening' ? '#dc2626'
-          : performanceTrendLabel(fit.slope, inverseMode) === 'Improving' ? '#0f8f4d'
+        const times = sessions.map((session) => session.time || session.date || session.label);
+        const fit = indexedTrendFit(values, times);
+        const seriesMedian = medianValue(values.filter(Number.isFinite));
+        const trendLabel = performanceTrendLabel(fit, seriesMedian, inverseMode);
+        const trendColor = trendLabel.includes('worsening') ? '#dc2626'
+          : trendLabel.includes('improving') ? '#0f8f4d'
             : '#66727f';
         canvas._chart = renderWardLineChart(canvas, labels, [
           {
@@ -2846,7 +2945,7 @@
             unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
           },
           {
-            label: `Trend line (${performanceTrendLabel(fit.slope, inverseMode)})`,
+            label: `Theil-Sen trend (${trendLabel})`,
             data: fit.trendData,
             borderColor: trendColor,
             borderDash: [7, 5],
@@ -2916,7 +3015,7 @@
         const chartWeekly = weeklyGroups.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
         const labels = chartWeekly.map((point) => point.label);
         const slopeFit = weeklySlopeFit(chartWeekly);
-        const slopeColor = Number(slopeFit.slopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.slopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
+        const slopeColor = Number(slopeFit.senSlopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.senSlopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
         renderWardLineChart(wardCanvas, labels, [
           {
             label: 'Average level',
@@ -2925,8 +3024,8 @@
             showLine: false
           },
           {
-            label: `Slope line (${formatTrend(slopeFit.slopeFtPerWeek, 'ft/week', 2)})`,
-            data: slopeFit.trendData,
+            label: `Theil-Sen trend (${formatTrend(slopeFit.senSlopeFtPerWeek, 'ft/week', 2)})`,
+            data: slopeFit.senTrendData,
             borderColor: slopeColor,
             borderDash: [7, 5],
             borderWidth: 3,
@@ -3230,7 +3329,7 @@
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
       els.detailSubhead.textContent = criticalGw?.groundwaterStatus === 'Critical'
-        ? 'Critical groundwater ward: linear slope and Mann-Kendall both indicate decline.'
+        ? 'Critical groundwater ward: the median borewell trend and independently significant UID trends confirm decline.'
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
