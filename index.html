@@ -88,6 +88,7 @@
             <button id="downloadNotUsableCsv" type="button">Not Usable Excel</button>
             <button id="downloadSpecificCapacity" type="button">Specific Capacity Excel</button>
             <button id="downloadCriticalGroundwater" type="button">Critical GW Excel</button>
+            <button id="downloadCriticalComparison" type="button">Previous 60 Comparison</button>
           </div>
         </details>
       </section>
@@ -257,6 +258,7 @@
       downloadNotUsableCsv: document.getElementById('downloadNotUsableCsv'),
       downloadSpecificCapacity: document.getElementById('downloadSpecificCapacity'),
       downloadCriticalGroundwater: document.getElementById('downloadCriticalGroundwater'),
+      downloadCriticalComparison: document.getElementById('downloadCriticalComparison'),
       toast: document.getElementById('toast'),
       detailTitle: document.getElementById('detailTitle'),
       detailSubhead: document.getElementById('detailSubhead'),
@@ -361,6 +363,9 @@
       const raw = Number(rawValue);
       return Number.isFinite(raw) ? raw * 1000000 : null;
     };
+    const isGroundwaterActionWard = (critical) => (
+      critical?.groundwaterStatus === 'Critical' || critical?.groundwaterStatus === 'Watch'
+    );
     const hasValidSpecificCapacity = (capacity) => (
       Boolean(capacity)
       && Number(capacity.validSessions || 0) > 0
@@ -370,18 +375,19 @@
     const formatTrend = (value, unit, decimals = 2) => value == null ? '-' : `${formatNumber(value, decimals)} ${unit}`;
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const criticalReasonHtml = (critical) => {
-      if (!critical || critical.groundwaterStatus !== 'Critical') return '';
+      if (!isGroundwaterActionWard(critical)) return '';
       const slope = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 4);
       const pValue = critical.mannKendallPValue == null ? '-' : formatNumber(critical.mannKendallPValue, 4);
       const classified = formatNumber(critical.classifiedSensorCount || 0);
       const declining = formatNumber(critical.confirmedDecliningSensorCount || 0);
+      const confirmed = critical.groundwaterStatus === 'Critical';
       return `
         <div class="critical-reason">
-          <strong>Why this ward is critical</strong>
-          <p>Groundwater depth is increasing significantly and the trend is independently supported by borewells within the ward.</p>
+          <strong>Why this ward is marked red</strong>
+          <p>${confirmed ? 'Groundwater depth is increasing significantly and the trend is independently supported by borewells within the ward.' : 'This ward has emerging groundwater decline evidence, so it is included in the current action list for review.'}</p>
           <ul>
             <li>Theil-Sen decline rate: ${slope}.</li>
-            <li>Mann-Kendall p-value: ${pValue} (confirmed when p <= ${TREND_SIGNIFICANCE_ALPHA}).</li>
+            <li>Mann-Kendall p-value: ${pValue}.</li>
             <li>${declining} of ${classified} classifiable borewells independently show confirmed decline.</li>
           </ul>
         </div>
@@ -513,14 +519,15 @@
     });
     const wardStyle = (feature) => {
       const critical = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(feature?.properties || {})));
-      if (currentDataSource === 'kh' && critical?.groundwaterStatus === 'Critical') {
+      if (currentDataSource === 'kh' && isGroundwaterActionWard(critical)) {
+        const confirmed = critical.groundwaterStatus === 'Critical';
         return {
           color: '#111827',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#dc2626',
-          fillOpacity: 0.58
+          fillColor: confirmed ? '#b91c1c' : '#dc2626',
+          fillOpacity: confirmed ? 0.66 : 0.54
         };
       }
       return neutralWardStyle();
@@ -598,7 +605,7 @@
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
-        ${criticalGw?.groundwaterStatus === 'Critical' ? `<div><strong>Critical reason:</strong> significant Theil-Sen/Mann-Kendall decline supported by ${formatNumber(criticalGw.confirmedDecliningSensorCount || 0)} borewells; median borewell rate ${formatTrend(criticalGw.medianSensorTheilSenSlopeFtPerWeek, 'ft/week', 2)}.</div>` : ''}
+        ${isGroundwaterActionWard(criticalGw) ? `<div><strong>Why marked:</strong> ${htmlEscape(criticalGw.updateReason || 'Groundwater decline evidence needs action/review.')}</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -3320,7 +3327,7 @@
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide');
-      els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && criticalGw?.groundwaterStatus === 'Critical');
+      els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(criticalGw));
       els.toggleRight.textContent = '›';
       els.toggleRight.title = 'Collapse details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
@@ -3333,8 +3340,8 @@
       dischargeChart = null;
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = criticalGw?.groundwaterStatus === 'Critical'
-        ? 'Critical groundwater ward: the median borewell trend and independently significant UID trends confirm decline.'
+      els.detailSubhead.textContent = isGroundwaterActionWard(criticalGw)
+        ? `${criticalGw.groundwaterStatus} groundwater action ward: review cleaned weekly trends, borewell support, and specific-capacity sessions.`
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
 
@@ -3458,6 +3465,9 @@
     });
     els.downloadCriticalGroundwater.addEventListener('click', () => {
       window.open(`${API_BASE_URL}/api/critical-wards-groundwater.xlsx`, '_blank', 'noopener');
+    });
+    els.downloadCriticalComparison.addEventListener('click', () => {
+      window.open(`${API_BASE_URL}/api/critical-wards-comparison.xlsx`, '_blank', 'noopener');
     });
     document.addEventListener('click', (event) => {
       const button = event.target.closest('.ward-specific-capacity-download');
