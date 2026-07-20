@@ -149,6 +149,7 @@
             <h2>Water Level Below Surface</h2>
             <div class="chart-actions">
               <button id="toggleGroundwaterOutliers" class="chart-download" type="button" aria-pressed="false">Show outliers</button>
+              <button id="toggleCycleConnector" class="chart-download" type="button" aria-pressed="true">Hide cycle connector</button>
               <button class="chart-expand" data-chart-id="waterChart" data-chart-title="Water Level Below Surface" type="button">Expand</button>
               <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
             </div>
@@ -228,6 +229,7 @@
     let selectedRange = 'week';
     let waterPoints = [];
     let showGroundwaterOutliers = false;
+    let showCycleConnector = true;
     let waterChart = null;
     let dischargeChart = null;
     let wardInlineCharts = [];
@@ -278,6 +280,7 @@
       waterEmpty: document.getElementById('waterEmpty'),
       dischargeEmpty: document.getElementById('dischargeEmpty'),
       toggleGroundwaterOutliers: document.getElementById('toggleGroundwaterOutliers'),
+      toggleCycleConnector: document.getElementById('toggleCycleConnector'),
       downloadWaterChart: document.getElementById('downloadWaterChart'),
       downloadDischargeChart: document.getElementById('downloadDischargeChart'),
       app: document.getElementById('app'),
@@ -1731,6 +1734,7 @@
         els.toggleGroundwaterOutliers.setAttribute('aria-pressed', showGroundwaterOutliers ? 'true' : 'false');
         els.toggleGroundwaterOutliers.disabled = !pointGroups.outliers.length;
       }
+      refreshCycleConnectorButtons();
       const labels = plotPoints.map((point) => new Date(point.time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }));
       const offLevels = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.offLevel).filter((value) => Number.isFinite(value));
       const onLevels = plotPoints.filter((point) => cleanedSet.has(point)).map((point) => point.onLevel).filter((value) => Number.isFinite(value));
@@ -1754,9 +1758,9 @@
       if (offLevels.length || onLevels.length || outlierLevels.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
           {
-            label: 'Cleaned level path',
-            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.waterLevel) ? point.waterLevel : null),
-            borderColor: '#4b5563',
+            label: 'ON/OFF cycle connector',
+            data: cycleConnectorData(plotPoints, cleanedSet),
+            borderColor: '#475569',
             borderDash: [6, 5],
             borderWidth: 2,
             pointRadius: 0,
@@ -1768,22 +1772,26 @@
             label: 'Off level',
             data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) ? point.offLevel : null),
             borderColor: 'rgba(0,0,0,0)',
-            pointBorderColor: '#244e9a',
-            pointBackgroundColor: '#244e9a',
+            pointBorderColor: '#1d4ed8',
+            pointBackgroundColor: '#dbeafe',
+            pointStyle: 'rectRot',
+            pointBorderWidth: 2,
             borderWidth: 0,
-            pointRadius: 3,
-            pointHoverRadius: 5,
+            pointRadius: 4,
+            pointHoverRadius: 7,
             showLine: false
           },
           {
             label: 'On level',
             data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.onLevel) ? point.onLevel : null),
             borderColor: 'rgba(0,0,0,0)',
-            pointBorderColor: '#008a3d',
-            pointBackgroundColor: '#008a3d',
+            pointBorderColor: '#15803d',
+            pointBackgroundColor: '#dcfce7',
+            pointStyle: 'triangle',
+            pointBorderWidth: 2,
             borderWidth: 0,
-            pointRadius: 3,
-            pointHoverRadius: 5,
+            pointRadius: 5,
+            pointHoverRadius: 8,
             showLine: false
           },
           {
@@ -1851,10 +1859,31 @@
         button.setAttribute('aria-pressed', showGroundwaterOutliers ? 'true' : 'false');
       });
     };
+    const refreshCycleConnectorButtons = () => {
+      const label = showCycleConnector ? 'Hide cycle connector' : 'Show cycle connector';
+      if (els.toggleCycleConnector) {
+        els.toggleCycleConnector.textContent = label;
+        els.toggleCycleConnector.setAttribute('aria-pressed', showCycleConnector ? 'true' : 'false');
+      }
+      document.querySelectorAll('[data-toggle-cycle-connector]').forEach((button) => {
+        button.textContent = label;
+        button.setAttribute('aria-pressed', showCycleConnector ? 'true' : 'false');
+      });
+    };
+    const cycleConnectorData = (points, cleanedSet) => {
+      if (!showCycleConnector) return points.map(() => null);
+      return points.map((point) => {
+        if (!cleanedSet.has(point)) return null;
+        if (Number.isFinite(point.onLevel)) return point.onLevel;
+        if (Number.isFinite(point.offLevel)) return point.offLevel;
+        return null;
+      });
+    };
     const redrawGroundwaterCharts = () => {
       renderCharts();
       if (activeWardData) renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
       refreshGroundwaterOutlierButtons();
+      refreshCycleConnectorButtons();
       refreshFullscreenChart();
     };
 
@@ -2308,10 +2337,10 @@
             borderWidth: dataset.borderWidth ?? 2,
             borderDash: dataset.borderDash ?? [],
             pointRadius: dataset.pointRadius ?? 3,
-            pointHoverRadius: 4,
+            pointHoverRadius: dataset.pointHoverRadius ?? 4,
             showLine: dataset.showLine ?? options.showLine ?? true,
             tension: 0,
-            spanGaps: false
+            spanGaps: dataset.spanGaps ?? false
           }))
         },
         options: {
@@ -2417,6 +2446,7 @@
             </div>
             <div class="uid-outlier-tabs" data-uid-index="${index}">
               <button type="button" data-toggle-groundwater-outliers>Show flagged outliers</button>
+              <button type="button" data-toggle-cycle-connector>Hide cycle connector</button>
             </div>
             <div class="mini-chart-wrap">
               <button class="mini-chart-expand chart-expand" data-chart-id="uidModeChart${index}" data-chart-title="UID ${sensor.uid}" type="button">Expand</button>
@@ -2839,28 +2869,44 @@
           }
           canvas.style.display = 'block';
           if (empty) empty.style.display = 'none';
-          canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), [
-            {
+          const hasOnOffDaily = daily.some((point) => cleanedDailySet.has(point) && (Number.isFinite(point.offLevel) || Number.isFinite(point.onLevel)));
+          const dailyDatasets = [
+            ...(hasOnOffDaily ? [{
+              label: 'ON/OFF cycle connector',
+              data: cycleConnectorData(daily, cleanedDailySet),
+              borderColor: '#475569',
+              borderDash: [6, 5],
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHoverRadius: 0,
+              showLine: true,
+              spanGaps: true,
+              unit: 'ft'
+            }] : []),
+            ...(!hasOnOffDaily ? [{
               label: 'Water level',
-              data: daily.map((point) => cleanedDailySet.has(point) && point.onLevel == null && point.offLevel == null ? point.primary : null),
+              data: daily.map((point) => cleanedDailySet.has(point) ? point.primary : null),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#111827',
               pointBackgroundColor: '#111827',
+              pointStyle: 'circle',
               borderWidth: 0,
               pointRadius: 3,
               pointHoverRadius: 5,
               showLine: false,
               unit: 'ft'
-            },
+            }] : []),
             {
               label: 'Off level',
               data: daily.map((point) => cleanedDailySet.has(point) ? point.offLevel : null),
               borderColor: 'rgba(0,0,0,0)',
-              pointBorderColor: '#244e9a',
-              pointBackgroundColor: '#244e9a',
+              pointBorderColor: '#1d4ed8',
+              pointBackgroundColor: '#dbeafe',
+              pointStyle: 'rectRot',
+              pointBorderWidth: 2,
               borderWidth: 0,
-              pointRadius: 3,
-              pointHoverRadius: 5,
+              pointRadius: 4,
+              pointHoverRadius: 7,
               showLine: false,
               unit: 'ft'
             },
@@ -2868,11 +2914,13 @@
               label: 'On level',
               data: daily.map((point) => cleanedDailySet.has(point) ? point.onLevel : null),
               borderColor: 'rgba(0,0,0,0)',
-              pointBorderColor: '#0f8f4d',
-              pointBackgroundColor: '#0f8f4d',
+              pointBorderColor: '#15803d',
+              pointBackgroundColor: '#dcfce7',
+              pointStyle: 'triangle',
+              pointBorderWidth: 2,
               borderWidth: 0,
-              pointRadius: 3,
-              pointHoverRadius: 5,
+              pointRadius: 5,
+              pointHoverRadius: 8,
               showLine: false,
               unit: 'ft'
             },
@@ -2888,7 +2936,8 @@
               showLine: false,
               unit: 'ft'
             }
-          ], {
+          ];
+          canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), dailyDatasets, {
             yTitle: 'Feet below surface',
             unit: 'ft',
             rotateXLabels: daily.length > 8,
@@ -3047,6 +3096,7 @@
         });
       });
       refreshGroundwaterOutlierButtons();
+      refreshCycleConnectorButtons();
     };
 
     const selectWard = async (feature) => {
@@ -3218,6 +3268,12 @@
       const button = event.target.closest('#toggleGroundwaterOutliers, [data-toggle-groundwater-outliers]');
       if (!button) return;
       showGroundwaterOutliers = !showGroundwaterOutliers;
+      redrawGroundwaterCharts();
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('#toggleCycleConnector, [data-toggle-cycle-connector]');
+      if (!button) return;
+      showCycleConnector = !showCycleConnector;
       redrawGroundwaterCharts();
     });
     els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
