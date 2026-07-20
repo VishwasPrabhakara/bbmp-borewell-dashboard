@@ -1457,7 +1457,13 @@
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
       canvas.style.width = '100%';
-      const chartValue = (value) => value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      const chartValue = (value) => {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          const y = Number(value.y);
+          return Number.isFinite(y) ? { ...value, y: Number(y.toFixed(2)) } : { ...value, y: null };
+        }
+        return value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(Number(value).toFixed(2)) : null;
+      };
       const rotateLabels = Boolean(options.rotateXLabels);
       return new Chart(document.getElementById(canvasId), {
         type: 'line',
@@ -1479,11 +1485,18 @@
           maintainAspectRatio: false,
           scales: {
             x: {
+              type: options.xType === 'linear-time' ? 'linear' : options.xType || 'category',
               ticks: {
                 minRotation: rotateLabels ? 90 : 0,
                 maxRotation: rotateLabels ? 90 : 0,
                 autoSkip: true,
-                maxTicksLimit: rotateLabels ? 12 : 6
+                maxTicksLimit: rotateLabels ? 12 : 6,
+                callback(value) {
+                  if (options.xType === 'linear-time') {
+                    return new Date(Number(value)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                  }
+                  return this.getLabelForValue(value);
+                }
               }
             },
             y: {
@@ -1509,6 +1522,13 @@
 
                   const unit = context.dataset.unit || options.unit || '';
                   return `${context.dataset.label}: ${value.toFixed(2)}${unit ? ` ${unit}` : ''}`;
+                },
+                title(context) {
+                  const raw = context[0]?.raw || {};
+                  if (options.xType === 'linear-time' && Number.isFinite(Number(raw.x))) {
+                    return raw.label || new Date(Number(raw.x)).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                  }
+                  return context[0]?.label || '';
                 }
               }
             }
@@ -1756,7 +1776,7 @@
       dischargeCanvas.style.display = showDischargeBox && discharge.length ? 'block' : 'none';
 
       if (offLevels.length || onLevels.length || outlierLevels.length) {
-        waterChart = buildMultiChart('waterChart', waterChart, labels, [
+        waterChart = buildMultiChart('waterChart', waterChart, [], [
           {
             label: 'Water level path',
             data: cycleConnectorData(plotPoints, cleanedSet),
@@ -1770,7 +1790,7 @@
           },
           {
             label: 'Off level',
-            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) ? point.offLevel : null),
+            data: levelPointData(plotPoints, cleanedSet, 'offLevel'),
             borderColor: 'rgba(0,0,0,0)',
             pointBorderColor: '#1d4ed8',
             pointBackgroundColor: '#dbeafe',
@@ -1783,7 +1803,7 @@
           },
           {
             label: 'On level',
-            data: plotPoints.map((point) => cleanedSet.has(point) && Number.isFinite(point.onLevel) ? point.onLevel : null),
+            data: levelPointData(plotPoints, cleanedSet, 'onLevel'),
             borderColor: 'rgba(0,0,0,0)',
             pointBorderColor: '#15803d',
             pointBackgroundColor: '#dcfce7',
@@ -1796,7 +1816,7 @@
           },
           {
             label: 'Flagged outliers',
-            data: plotPoints.map((point) => outlierSet.has(point) ? point.primary : null),
+            data: levelPointData(plotPoints, outlierSet, 'primary'),
             borderColor: '#f59e0b',
             pointBorderColor: '#92400e',
             pointBackgroundColor: '#f59e0b',
@@ -1809,7 +1829,8 @@
           reverseY: true,
           yTitle: 'Feet below surface',
           unit: 'ft',
-          rotateXLabels: true
+          rotateXLabels: true,
+          xType: 'linear-time'
         });
       } else if (water.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
@@ -1871,13 +1892,50 @@
       });
     };
     const cycleConnectorData = (points, cleanedSet) => {
-      if (!showCycleConnector) return points.map(() => null);
-      return points.map((point) => {
-        if (!cleanedSet.has(point)) return null;
-        if (Number.isFinite(point.onLevel)) return point.onLevel;
-        if (Number.isFinite(point.offLevel)) return point.offLevel;
-        return null;
+      if (!showCycleConnector) return [];
+      const timestamp = (point) => new Date(point.stop_time || point.time).getTime();
+      const label = (point) => new Date(point.stop_time || point.time).toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
       });
+      const sessions = (points || [])
+        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel) && Number.isFinite(timestamp(point)))
+        .sort((a, b) => timestamp(a) - timestamp(b));
+      if (sessions.length) {
+        return sessions.flatMap((point) => {
+          const x = timestamp(point);
+          const text = label(point);
+          return [
+            { x, y: point.offLevel, label: `${text} OFF` },
+            { x, y: point.onLevel, label: `${text} ON` }
+          ];
+        });
+      }
+      return (points || [])
+        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.primary) && Number.isFinite(timestamp(point)))
+        .sort((a, b) => timestamp(a) - timestamp(b))
+        .map((point) => ({ x: timestamp(point), y: point.primary, label: label(point) }));
+    };
+    const levelPointData = (points, cleanedSet, key) => {
+      const hasSessionPairs = ['offLevel', 'onLevel'].includes(key)
+        && (points || []).some((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel));
+      return (points || [])
+        .filter((point) => {
+          if (!cleanedSet.has(point)) return false;
+          if (hasSessionPairs && ['offLevel', 'onLevel'].includes(key)) {
+            return Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel);
+          }
+          return true;
+        })
+        .map((point) => {
+          const x = new Date(point.stop_time || point.time).getTime();
+          const y = Number(point[key]);
+          return Number.isFinite(x) && Number.isFinite(y)
+            ? { x, y, label: new Date(point.stop_time || point.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) }
+            : { x, y: null };
+        });
     };
     const redrawGroundwaterCharts = () => {
       renderCharts();
@@ -2348,7 +2406,7 @@
           maintainAspectRatio: false,
           scales: {
             x: {
-              type: options.xType || 'category',
+              type: options.xType === 'linear-time' ? 'linear' : options.xType || 'category',
               title: { display: Boolean(options.xTitle), text: options.xTitle || '' },
               ticks: {
                 minRotation: rotateLabels ? 90 : 0,
@@ -2356,6 +2414,9 @@
                 autoSkip: Boolean(options.autoSkipXLabels),
                 maxTicksLimit: options.maxTicksLimit || 12,
                 callback(value) {
+                  if (options.xType === 'linear-time') {
+                    return new Date(Number(value)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                  }
                   if (options.xType === 'linear') return Number(value).toFixed(options.xDecimals ?? 2);
                   return monthAxisLabel(this.getLabelForValue(value));
                 }
@@ -2382,6 +2443,10 @@
             tooltip: {
               callbacks: {
                 title(context) {
+                  if (options.xType === 'linear-time') {
+                    const raw = context[0]?.raw || {};
+                    return raw.label || new Date(Number(raw.x)).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                  }
                   if (options.xType === 'linear') {
                     const raw = context[0]?.raw || {};
                     return raw.label || `${options.xTitle || 'X'}: ${Number(raw.x).toFixed(options.xDecimals ?? 2)}`;
@@ -2898,7 +2963,7 @@
             }] : []),
             {
               label: 'Off level',
-              data: daily.map((point) => cleanedDailySet.has(point) ? point.offLevel : null),
+              data: levelPointData(daily, cleanedDailySet, 'offLevel'),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#1d4ed8',
               pointBackgroundColor: '#dbeafe',
@@ -2912,7 +2977,7 @@
             },
             {
               label: 'On level',
-              data: daily.map((point) => cleanedDailySet.has(point) ? point.onLevel : null),
+              data: levelPointData(daily, cleanedDailySet, 'onLevel'),
               borderColor: 'rgba(0,0,0,0)',
               pointBorderColor: '#15803d',
               pointBackgroundColor: '#dcfce7',
@@ -2926,7 +2991,7 @@
             },
             {
               label: 'Flagged outliers',
-              data: daily.map((point) => outlierDailySet.has(point) ? point.primary : null),
+              data: levelPointData(daily, outlierDailySet, 'primary'),
               borderColor: '#f59e0b',
               pointBorderColor: '#92400e',
               pointBackgroundColor: '#f59e0b',
@@ -2937,12 +3002,13 @@
               unit: 'ft'
             }
           ];
-          canvas._chart = renderWardLineChart(canvas, daily.map((point) => point.label), dailyDatasets, {
+          canvas._chart = renderWardLineChart(canvas, hasOnOffDaily ? [] : daily.map((point) => point.label), dailyDatasets, {
             yTitle: 'Feet below surface',
             unit: 'ft',
             rotateXLabels: daily.length > 8,
             autoSkipXLabels: daily.length > 18,
-            maxTicksLimit: daily.length > 28 ? 14 : 18
+            maxTicksLimit: daily.length > 28 ? 14 : 18,
+            xType: hasOnOffDaily ? 'linear-time' : undefined
           });
           return;
         }
