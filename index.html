@@ -149,7 +149,7 @@
             <h2>Water Level Below Surface</h2>
             <div class="chart-actions">
               <button id="toggleGroundwaterOutliers" class="chart-download" type="button" aria-pressed="false">Show outliers</button>
-              <button id="toggleCycleConnector" class="chart-download" type="button" aria-pressed="true">Hide cycle connector</button>
+              <button id="toggleCycleConnector" class="chart-download" type="button" aria-pressed="true">Hide water level path</button>
               <button class="chart-expand" data-chart-id="waterChart" data-chart-title="Water Level Below Surface" type="button">Expand</button>
               <button id="downloadWaterChart" class="chart-download" type="button">Download PNG</button>
             </div>
@@ -1758,7 +1758,7 @@
       if (offLevels.length || onLevels.length || outlierLevels.length) {
         waterChart = buildMultiChart('waterChart', waterChart, labels, [
           {
-            label: 'ON/OFF cycle connector',
+            label: 'Water level path',
             data: cycleConnectorData(plotPoints, cleanedSet),
             borderColor: '#475569',
             borderDash: [6, 5],
@@ -1860,7 +1860,7 @@
       });
     };
     const refreshCycleConnectorButtons = () => {
-      const label = showCycleConnector ? 'Hide cycle connector' : 'Show cycle connector';
+      const label = showCycleConnector ? 'Hide water level path' : 'Show water level path';
       if (els.toggleCycleConnector) {
         els.toggleCycleConnector.textContent = label;
         els.toggleCycleConnector.setAttribute('aria-pressed', showCycleConnector ? 'true' : 'false');
@@ -2446,7 +2446,7 @@
             </div>
             <div class="uid-outlier-tabs" data-uid-index="${index}">
               <button type="button" data-toggle-groundwater-outliers>Show flagged outliers</button>
-              <button type="button" data-toggle-cycle-connector>Hide cycle connector</button>
+              <button type="button" data-toggle-cycle-connector>Hide water level path</button>
             </div>
             <div class="mini-chart-wrap">
               <button class="mini-chart-expand chart-expand" data-chart-id="uidModeChart${index}" data-chart-title="UID ${sensor.uid}" type="button">Expand</button>
@@ -2872,7 +2872,7 @@
           const hasOnOffDaily = daily.some((point) => cleanedDailySet.has(point) && (Number.isFinite(point.offLevel) || Number.isFinite(point.onLevel)));
           const dailyDatasets = [
             ...(hasOnOffDaily ? [{
-              label: 'ON/OFF cycle connector',
+              label: 'Water level path',
               data: cycleConnectorData(daily, cleanedDailySet),
               borderColor: '#475569',
               borderDash: [6, 5],
