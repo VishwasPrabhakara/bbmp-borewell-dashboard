@@ -975,6 +975,9 @@
       const sourceScales = sourceChart.options?.scales || {};
       const fullscreenScales = {};
       Object.entries(sourceScales).forEach(([key, scale]) => {
+        const isTimestampAxis = key === 'x'
+          && scale.type === 'linear'
+          && (sourceChart.data.datasets || []).some((dataset) => (dataset.data || []).some((item) => item && typeof item === 'object' && Number(item.x) > 1000000000000));
         fullscreenScales[key] = {
           type: scale.type,
           position: scale.position,
@@ -991,7 +994,10 @@
             autoSkip: scale.ticks?.autoSkip,
             maxTicksLimit: scale.ticks?.maxTicksLimit,
             font: { size: 20 },
-            padding: 12
+            padding: 12,
+            callback: isTimestampAxis
+              ? (value) => new Date(Number(value)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+              : scale.ticks?.callback
           }
         };
       });
@@ -1020,6 +1026,10 @@
             padding: 14,
             callbacks: {
               title(context) {
+                const raw = context[0]?.raw || {};
+                if (raw && typeof raw === 'object' && Number(raw.x) > 1000000000000) {
+                  return raw.label || new Date(Number(raw.x)).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                }
                 return context[0]?.label || '';
               },
               label(context) {
