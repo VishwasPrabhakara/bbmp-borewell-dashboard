@@ -1893,30 +1893,37 @@
     };
     const cycleConnectorData = (points, cleanedSet) => {
       if (!showCycleConnector) return [];
-      const timestamp = (point) => new Date(point.stop_time || point.time).getTime();
-      const label = (point) => new Date(point.stop_time || point.time).toLocaleString('en-IN', {
+      const stopTimestamp = (point) => new Date(point.stop_time || point.time).getTime();
+      const startTimestamp = (point) => {
+        const stop = stopTimestamp(point);
+        const durationMin = Number(point.session_duration_min);
+        return Number.isFinite(stop) && Number.isFinite(durationMin) && durationMin > 0
+          ? stop - durationMin * 60000
+          : stop;
+      };
+      const label = (timeMs, suffix = '') => `${new Date(timeMs).toLocaleString('en-IN', {
         day: '2-digit',
         month: 'short',
         hour: '2-digit',
         minute: '2-digit'
-      });
+      })}${suffix ? ` ${suffix}` : ''}`;
       const sessions = (points || [])
-        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel) && Number.isFinite(timestamp(point)))
-        .sort((a, b) => timestamp(a) - timestamp(b));
+        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.offLevel) && Number.isFinite(point.onLevel) && Number.isFinite(stopTimestamp(point)))
+        .sort((a, b) => stopTimestamp(a) - stopTimestamp(b));
       if (sessions.length) {
         return sessions.flatMap((point) => {
-          const x = timestamp(point);
-          const text = label(point);
+          const offX = startTimestamp(point);
+          const onX = stopTimestamp(point);
           return [
-            { x, y: point.offLevel, label: `${text} OFF` },
-            { x, y: point.onLevel, label: `${text} ON` }
+            { x: offX, y: point.offLevel, label: label(offX, 'OFF') },
+            { x: onX, y: point.onLevel, label: label(onX, 'ON') }
           ];
         });
       }
       return (points || [])
-        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.primary) && Number.isFinite(timestamp(point)))
-        .sort((a, b) => timestamp(a) - timestamp(b))
-        .map((point) => ({ x: timestamp(point), y: point.primary, label: label(point) }));
+        .filter((point) => cleanedSet.has(point) && Number.isFinite(point.primary) && Number.isFinite(stopTimestamp(point)))
+        .sort((a, b) => stopTimestamp(a) - stopTimestamp(b))
+        .map((point) => ({ x: stopTimestamp(point), y: point.primary, label: label(stopTimestamp(point)) }));
     };
     const levelPointData = (points, cleanedSet, key) => {
       const hasSessionPairs = ['offLevel', 'onLevel'].includes(key)
@@ -1930,10 +1937,14 @@
           return true;
         })
         .map((point) => {
-          const x = new Date(point.stop_time || point.time).getTime();
+          const stop = new Date(point.stop_time || point.time).getTime();
+          const durationMin = Number(point.session_duration_min);
+          const x = key === 'offLevel' && hasSessionPairs && Number.isFinite(durationMin) && durationMin > 0
+            ? stop - durationMin * 60000
+            : stop;
           const y = Number(point[key]);
           return Number.isFinite(x) && Number.isFinite(y)
-            ? { x, y, label: new Date(point.stop_time || point.time).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) }
+            ? { x, y, label: new Date(x).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) }
             : { x, y: null };
         });
     };
