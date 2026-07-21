@@ -786,26 +786,14 @@
       renderSensors();
     };
 
-    const sensorSymbolSvg = (sensor) => {
-      const category = sensor.dataCategory || 'none';
-      const color = colorForSensor(sensor);
-      if (category === 'none') {
-        return `<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 2 26 14 14 26 2 14Z" fill="${color}" stroke="#fff" stroke-width="3"/><path d="M14 8v7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="14" cy="19" r="1.4" fill="#fff"/></svg>`;
-      }
-      const fill = category === 'water' ? '#fff' : color;
-      const stroke = category === 'water' ? color : '#fff';
-      const center = category === 'water' ? color : '#fff';
-      return `<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 2C9.4 8 6.5 12.5 6.5 17a7.5 7.5 0 0 0 15 0C21.5 12.5 18.6 8 14 2Z" fill="${fill}" stroke="${stroke}" stroke-width="3"/><circle cx="14" cy="17" r="3.2" fill="${center}" opacity="0.95"/></svg>`;
-    };
-
     const sensorIcon = (sensor) => {
       const dimmed = focusedWardNo && normalizeWardNo(sensor.wardNo) !== focusedWardNo;
       return L.divIcon({
         className: '',
-        html: `<div class="sensor-symbol ${dimmed ? 'dimmed' : ''} ${sensor.dataCategory === 'none' ? 'warning' : ''}">${sensorSymbolSvg(sensor)}</div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12],
-        popupAnchor: [0, -12]
+        html: `<div class="marker-pin ${dimmed ? 'dimmed' : ''}" style="background:${colorForSensor(sensor)}"></div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        popupAnchor: [0, -10]
       });
     };
 
@@ -3503,8 +3491,6 @@
       const selectedLayer = wardLayers.find((layer) => layer.feature === feature);
       if (selectedLayer) {
         selectedLayer.bringToFront();
-        const bounds = selectedLayer.getBounds?.();
-        if (bounds?.isValid?.()) map.fitBounds(bounds.pad(0.25), { animate: true, maxZoom: 14 });
       }
       sensorLayer.bringToFront();
 
@@ -3513,6 +3499,21 @@
         ? `${wardMapCategory(criticalGw)}: review groundwater trend methods, borewell support, and specific-capacity sessions.`
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
+      window.setTimeout(() => {
+        map.invalidateSize();
+        const layer = wardLayers.find((item) => item.feature === feature);
+        const bounds = layer?.getBounds?.();
+        if (bounds?.isValid?.()) {
+          layer.bringToFront();
+          map.fitBounds(bounds.pad(0.22), {
+            animate: true,
+            maxZoom: 14,
+            paddingTopLeft: [20, 20],
+            paddingBottomRight: [24, 24]
+          });
+          sensorLayer.bringToFront();
+        }
+      }, 260);
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
@@ -3553,9 +3554,9 @@
       L.DomEvent.disableClickPropagation(div);
       div.innerHTML = `
         <div class="legend-title">Sensor data</div>
-        <button class="legend-row" data-filter="both" type="button"><span class="legend-sensor-icon drop both"></span>WL + discharge</button>
-        <button class="legend-row" data-filter="water" type="button"><span class="legend-sensor-icon drop water"></span>WL only</button>
-        <button class="legend-row" data-filter="none" type="button"><span class="legend-sensor-icon warning"></span>No data</button>
+        <button class="legend-row" data-filter="both" type="button"><span class="dot" style="background:#007a3d"></span>WL + discharge</button>
+        <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
+        <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
