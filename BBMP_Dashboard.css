@@ -605,7 +605,7 @@
       padding: 8px;
       font-size: 11px;
       line-height: 1.35;
-      max-width: 170px;
+      max-width: 220px;
     }
 
     .legend-row {
@@ -633,7 +633,7 @@
       color: var(--muted);
       font-size: 10px;
       line-height: 1.25;
-      max-width: 145px;
+      max-width: 190px;
       white-space: normal;
     }
 
@@ -652,6 +652,7 @@
       padding: 2px 4px;
       justify-content: flex-start;
       text-align: left;
+      white-space: normal;
     }
 
     button.legend-row.active {

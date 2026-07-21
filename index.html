@@ -208,6 +208,7 @@
     let lakeLayer = null;
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
+    let wardStatusFilter = '';
     let sensors = [];
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
@@ -377,14 +378,20 @@
     const isOldCriticalNoGroundwaterWard = (critical) => (
       critical?.oldConsumptionNoGroundwaterData === 'Yes'
     );
+    const wardStatusKey = (critical) => {
+      if (isGroundwaterActionWard(critical)) return 'critical';
+      if (isLinearMannKendallScreeningWard(critical)) return 'warning';
+      if (isOldCriticalNoGroundwaterWard(critical)) return 'unverified';
+      return '';
+    };
     const wardMapCategory = (critical) => (
       isGroundwaterActionWard(critical)
-        ? 'Robust groundwater action'
+        ? 'Critical: Groundwater Decline'
         : isLinearMannKendallScreeningWard(critical)
-          ? 'Linear + Mann-Kendall screening'
+          ? 'Warning: Possible Decline'
           : isOldCriticalNoGroundwaterWard(critical)
-            ? 'Old consumption-critical, no groundwater data'
-            : critical?.dashboardMapCategory || 'Not current groundwater action'
+            ? 'Unverified: Old Critical Ward'
+            : 'Not current groundwater action'
     );
     const hasValidSpecificCapacity = (capacity) => (
       Boolean(capacity)
@@ -403,11 +410,11 @@
       const declining = formatNumber(critical.confirmedDecliningSensorCount || 0);
       const category = wardMapCategory(critical);
       return `
-        <div class="critical-reason ${category.includes('screening') ? 'screening' : category.includes('no groundwater') ? 'unverified' : ''}">
+        <div class="critical-reason ${category.startsWith('Warning') ? 'screening' : category.startsWith('Unverified') ? 'unverified' : ''}">
           <strong>Why this ward is marked</strong>
-          <p>${category === 'Robust groundwater action'
-            ? 'The robust groundwater workflow flags this ward using cleaned weekly levels and resistant trend evidence.'
-            : category === 'Linear + Mann-Kendall screening'
+          <p>${category === 'Critical: Groundwater Decline'
+            ? 'Cleaned weekly groundwater levels show a consistent decline signal and need priority review.'
+            : category === 'Warning: Possible Decline'
               ? 'The sensitive statistical screen flags this ward using a positive linear slope and significant Mann-Kendall trend, but it is not in the robust action set.'
               : 'This ward was in the old consumption-critical list, but current groundwater sensor data is not available, so it remains unverified.'}</p>
           <ul>
@@ -545,6 +552,8 @@
     });
     const wardStyle = (feature) => {
       const critical = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(feature?.properties || {})));
+      const key = wardStatusKey(critical);
+      if (wardStatusFilter && key !== wardStatusFilter) return neutralWardStyle();
       if (currentDataSource === 'kh' && isGroundwaterActionWard(critical)) {
         return {
           color: '#111827',
@@ -670,16 +679,21 @@
     };
 
     const renderMethodSummary = (payload) => {
-      const counts = payload?.methodCounts;
-      if (!els.methodSummary || !counts || currentDataSource !== 'kh') {
+      const wards = Array.isArray(payload?.wards) ? payload.wards : [];
+      if (!els.methodSummary || !wards.length || currentDataSource !== 'kh') {
         if (els.methodSummary) els.methodSummary.style.display = 'none';
         return;
       }
+      const counts = {
+        critical: wards.filter((ward) => wardStatusKey(ward) === 'critical').length,
+        warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
+        unverified: wards.filter((ward) => wardStatusKey(ward) === 'unverified').length
+      };
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
-        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.dashboardAction || 0)}</strong><span>Robust action</span></div>
-        <div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.linearAndMannKendall || 0)}</strong><span>Linear + MK screen</span></div>
-        <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.oldConsumptionNoGroundwaterData || 0)}</strong><span>Old critical, no GW data</span></div>
+        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
+        <div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Warning: Possible Decline</span></div>
+        <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
       `;
     };
 
@@ -761,8 +775,9 @@
         const uidMatch = query && (uid === query || (query.length >= 5 && uid.includes(query)));
         const directMatch = !query || wardNumberMatch || wardNameMatch || uidMatch;
         const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
+        const wardStatusMatch = !wardStatusFilter || wardStatusKey(criticalGroundwaterByNo.get(normalizeWardNo(sensor.wardNo))) === wardStatusFilter;
         const qcMatch = !qcFilter || qcStatusForSensor(sensor) === qcFilter;
-        return dataMatch && qcMatch && directMatch;
+        return dataMatch && wardStatusMatch && qcMatch && directMatch;
       });
     };
 
@@ -3460,9 +3475,9 @@
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
-        <div class="legend-row"><span class="swatch" style="background:#7f1d1d"></span>Robust groundwater action</div>
-        <div class="legend-row"><span class="swatch" style="background:#c2410c"></span>Linear + MK screen</div>
-        <div class="legend-row"><span class="swatch" style="background:#4c1d95"></span>Old critical, no GW data</div>
+        <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
+        <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
+        <button class="legend-row" data-ward-filter="unverified" type="button"><span class="swatch" style="background:#4c1d95"></span>Unverified: Old Critical</button>
         <div class="legend-note">Dark ward boundaries remain visible under status fills.</div>
       `;
       return div;
@@ -3472,6 +3487,9 @@
     const updateLegendFilterUi = () => {
       document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
         button.classList.toggle('active', button.dataset.filter === legendFilter);
+      });
+      document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.wardFilter === wardStatusFilter);
       });
     };
 
@@ -3487,6 +3505,15 @@
         updateLegendFilterUi();
         renderSensors();
         fitSensors();
+      });
+    });
+
+    document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        wardStatusFilter = wardStatusFilter === button.dataset.wardFilter ? '' : button.dataset.wardFilter;
+        updateLegendFilterUi();
+        refreshWardPopups();
+        renderSensors();
       });
     });
 
