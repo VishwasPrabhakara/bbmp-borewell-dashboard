@@ -3509,24 +3509,29 @@
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
       const zoomToSelectedWard = () => {
-        map.invalidateSize();
-        const layer = wardLayers.find((item) => item.feature === feature);
-        const bounds = layer?.getBounds?.();
-        if (bounds?.isValid?.()) {
-          layer.bringToFront();
-          layer._path?.classList.add('ward-focused-shape');
-          map.fitBounds(bounds.pad(0.22), {
-            animate: true,
-            maxZoom: 14,
-            paddingTopLeft: [28, 24],
-            paddingBottomRight: [28, 24]
-          });
-          window.setTimeout(() => {
+        map._size = null;
+        map.invalidateSize({ pan: false, animate: false });
+        window.requestAnimationFrame(() => {
+          map._size = null;
+          map.invalidateSize({ pan: false, animate: false });
+          const layer = wardLayers.find((item) => item.feature === feature);
+          const bounds = layer?.getBounds?.();
+          if (bounds?.isValid?.()) {
             layer.bringToFront();
             layer._path?.classList.add('ward-focused-shape');
-            bringSensorsToFront();
-          }, 360);
-        }
+            map.fitBounds(bounds.pad(0.22), {
+              animate: true,
+              maxZoom: 14,
+              paddingTopLeft: [28, 24],
+              paddingBottomRight: [28, 24]
+            });
+            window.setTimeout(() => {
+              layer.bringToFront();
+              layer._path?.classList.add('ward-focused-shape');
+              bringSensorsToFront();
+            }, 360);
+          }
+        });
       };
       window.setTimeout(zoomToSelectedWard, 520);
 
