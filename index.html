@@ -1327,7 +1327,7 @@
       const overflowTop = (mapRect.top + margin) - pathRect.top;
       const dx = overflowRight > 0 ? overflowRight : overflowLeft > 0 ? -overflowLeft : 0;
       const dy = overflowBottom > 0 ? overflowBottom : overflowTop > 0 ? -overflowTop : 0;
-      if (dx || dy) map.panBy([dx, dy], { animate: true });
+      if (dx || dy) map.panBy([dx, dy], { animate: false });
     };
 
     const applySensorDashboardData = (payload, qcPayload, sourceLabel, fromCache = false) => {
@@ -3543,6 +3543,7 @@
               layer.bringToFront();
               layer._path?.classList.add('ward-focused-shape');
               keepLayerInsideMapView(layer);
+              window.setTimeout(() => keepLayerInsideMapView(layer), 420);
               bringSensorsToFront();
             }, 520);
           }
