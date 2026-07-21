@@ -3508,21 +3508,27 @@
         ? `${wardMapCategory(criticalGw)}: review groundwater trend methods, borewell support, and specific-capacity sessions.`
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
-      window.setTimeout(() => {
+      const zoomToSelectedWard = () => {
         map.invalidateSize();
         const layer = wardLayers.find((item) => item.feature === feature);
         const bounds = layer?.getBounds?.();
         if (bounds?.isValid?.()) {
           layer.bringToFront();
+          layer._path?.classList.add('ward-focused-shape');
           map.fitBounds(bounds.pad(0.22), {
             animate: true,
             maxZoom: 14,
-            paddingTopLeft: [20, 20],
-            paddingBottomRight: [24, 24]
+            paddingTopLeft: [28, 24],
+            paddingBottomRight: [28, 24]
           });
-          bringSensorsToFront();
+          window.setTimeout(() => {
+            layer.bringToFront();
+            layer._path?.classList.add('ward-focused-shape');
+            bringSensorsToFront();
+          }, 360);
         }
-      }, 260);
+      };
+      window.setTimeout(zoomToSelectedWard, 520);
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
