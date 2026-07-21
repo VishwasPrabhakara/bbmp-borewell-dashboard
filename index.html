@@ -551,8 +551,8 @@
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#b91c1c',
-          fillOpacity: 0.66
+          fillColor: '#7f1d1d',
+          fillOpacity: 0.74
         };
       }
       if (currentDataSource === 'kh' && isLinearMannKendallScreeningWard(critical)) {
@@ -561,8 +561,8 @@
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#f97316',
-          fillOpacity: 0.52
+          fillColor: '#c2410c',
+          fillOpacity: 0.66
         };
       }
       if (currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(critical)) {
@@ -571,8 +571,8 @@
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#7c3aed',
-          fillOpacity: 0.5
+          fillColor: '#4c1d95',
+          fillOpacity: 0.64
         };
       }
       return neutralWardStyle();
@@ -677,9 +677,9 @@
       }
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
-        <div class="method-row"><span class="swatch" style="background:#b91c1c"></span><strong>${formatNumber(counts.dashboardAction || 0)}</strong><span>Robust action</span></div>
-        <div class="method-row"><span class="swatch" style="background:#f97316"></span><strong>${formatNumber(counts.linearAndMannKendall || 0)}</strong><span>Linear + MK screen</span></div>
-        <div class="method-row"><span class="swatch" style="background:#7c3aed"></span><strong>${formatNumber(counts.oldConsumptionNoGroundwaterData || 0)}</strong><span>Old critical, no GW data</span></div>
+        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.dashboardAction || 0)}</strong><span>Robust action</span></div>
+        <div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.linearAndMannKendall || 0)}</strong><span>Linear + MK screen</span></div>
+        <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.oldConsumptionNoGroundwaterData || 0)}</strong><span>Old critical, no GW data</span></div>
       `;
     };
 
@@ -3460,9 +3460,9 @@
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
-        <div class="legend-row"><span class="swatch" style="background:#b91c1c"></span>Robust groundwater action</div>
-        <div class="legend-row"><span class="swatch" style="background:#f97316"></span>Linear + MK screen</div>
-        <div class="legend-row"><span class="swatch" style="background:#7c3aed"></span>Old critical, no GW data</div>
+        <div class="legend-row"><span class="swatch" style="background:#7f1d1d"></span>Robust groundwater action</div>
+        <div class="legend-row"><span class="swatch" style="background:#c2410c"></span>Linear + MK screen</div>
+        <div class="legend-row"><span class="swatch" style="background:#4c1d95"></span>Old critical, no GW data</div>
         <div class="legend-note">Dark ward boundaries remain visible under status fills.</div>
       `;
       return div;
