@@ -90,6 +90,34 @@
       background: #fff7f7;
     }
 
+    .screening-ward-selected .details {
+      background: #fff7ed;
+      border-left-color: #fdba74;
+    }
+
+    .screening-ward-selected .details header {
+      background: #ffedd5;
+      border-bottom-color: #fed7aa;
+    }
+
+    .screening-ward-selected .details-body {
+      background: #fff7ed;
+    }
+
+    .unverified-ward-selected .details {
+      background: #f5f3ff;
+      border-left-color: #c4b5fd;
+    }
+
+    .unverified-ward-selected .details header {
+      background: #ede9fe;
+      border-bottom-color: #ddd6fe;
+    }
+
+    .unverified-ward-selected .details-body {
+      background: #f5f3ff;
+    }
+
     .details-title-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -365,6 +393,36 @@
       background: var(--soft);
     }
 
+    .method-summary {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      padding: 8px 10px;
+      font-size: 11px;
+    }
+
+    .method-row {
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr);
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      min-width: 0;
+    }
+
+    .method-row strong {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .method-row span:last-child {
+      min-width: 0;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
     .download-panel {
       border: 1px solid var(--line);
       border-radius: 7px;
@@ -455,6 +513,14 @@
       border-radius: 50%;
       margin-top: 4px;
       background: var(--no-data);
+      flex: none;
+    }
+
+    .swatch {
+      width: 14px;
+      height: 10px;
+      border-radius: 3px;
+      border: 1px solid rgba(17, 24, 39, 0.8);
       flex: none;
     }
 
@@ -721,12 +787,29 @@
       box-shadow: 0 8px 18px rgba(127, 29, 29, 0.08);
     }
 
+    .critical-reason.screening {
+      border-color: #fdba74;
+      background: #fff7ed;
+      color: #7c2d12;
+      box-shadow: 0 8px 18px rgba(124, 45, 18, 0.08);
+    }
+
+    .critical-reason.unverified {
+      border-color: #c4b5fd;
+      background: #f5f3ff;
+      color: #4c1d95;
+      box-shadow: 0 8px 18px rgba(76, 29, 149, 0.08);
+    }
+
     .critical-reason strong {
       display: block;
       color: #991b1b;
       font-size: 15px;
       margin-bottom: 6px;
     }
+
+    .critical-reason.screening strong { color: #9a3412; }
+    .critical-reason.unverified strong { color: #5b21b6; }
 
     .critical-reason p {
       margin: 0 0 8px;
