@@ -1316,6 +1316,20 @@
       }
     };
 
+    const keepLayerInsideMapView = (layer) => {
+      const pathRect = layer?._path?.getBoundingClientRect?.();
+      const mapRect = map.getContainer().getBoundingClientRect();
+      if (!pathRect || !mapRect) return;
+      const margin = 28;
+      const overflowRight = pathRect.right - (mapRect.right - margin);
+      const overflowLeft = (mapRect.left + margin) - pathRect.left;
+      const overflowBottom = pathRect.bottom - (mapRect.bottom - margin);
+      const overflowTop = (mapRect.top + margin) - pathRect.top;
+      const dx = overflowRight > 0 ? overflowRight : overflowLeft > 0 ? -overflowLeft : 0;
+      const dy = overflowBottom > 0 ? overflowBottom : overflowTop > 0 ? -overflowTop : 0;
+      if (dx || dy) map.panBy([dx, dy], { animate: true });
+    };
+
     const applySensorDashboardData = (payload, qcPayload, sourceLabel, fromCache = false) => {
       sensorQcByUid = new Map((qcPayload.sensors || []).map((item) => [String(item.uid), item]));
       sensors = (payload.sensors || []).map((sensor) => ({
@@ -3528,8 +3542,9 @@
             window.setTimeout(() => {
               layer.bringToFront();
               layer._path?.classList.add('ward-focused-shape');
+              keepLayerInsideMapView(layer);
               bringSensorsToFront();
-            }, 360);
+            }, 520);
           }
         });
       };
