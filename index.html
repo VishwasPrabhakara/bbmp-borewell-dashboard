@@ -228,6 +228,7 @@
     let loadSequence = 0;
     let wardFeatures = [];
     let wardLayers = [];
+    let focusedWardNo = '';
     let selectedSensor = null;
     let selectedRange = 'week';
     let waterPoints = [];
@@ -426,6 +427,29 @@
         </div>
       `;
     };
+    const wardCategoryCardHtml = (critical) => {
+      const category = wardMapCategory(critical);
+      if (category === 'Not current groundwater action') {
+        return `
+          <section class="ward-category-card neutral">
+            <strong>Normal / Not Currently Flagged</strong>
+            <p>This ward is not in the current groundwater decline category based on the latest cleaned trend indicators available in the dashboard.</p>
+          </section>
+        `;
+      }
+      const className = category.startsWith('Critical') ? 'critical' : category.startsWith('Warning') ? 'warning' : 'unverified';
+      const explanation = category.startsWith('Critical')
+        ? 'Priority groundwater decline ward. Cleaned weekly levels show stronger decline evidence and this ward should be reviewed first.'
+        : category.startsWith('Warning')
+          ? 'Possible decline ward. The sensitive trend screen is raising a signal, but the evidence is weaker than the critical group.'
+          : 'Previously consumption-critical ward without enough current groundwater sensor evidence, so it is kept visible separately instead of being treated as safe.';
+      return `
+        <section class="ward-category-card ${className}">
+          <strong>${htmlEscape(category)}</strong>
+          <p>${explanation}</p>
+        </section>
+      `;
+    };
     const formatDateTime = (value) => {
       if (!value) return '-';
       const date = new Date(value);
@@ -550,12 +574,32 @@
       fillColor: '#000000',
       fillOpacity: 0
     });
+    const dimmedWardStyle = () => ({
+      color: '#475569',
+      weight: 1.5,
+      opacity: 0.45,
+      fill: true,
+      fillColor: '#94a3b8',
+      fillOpacity: 0.08
+    });
+    const focusedWardStyle = (base) => ({
+      ...base,
+      color: '#020617',
+      weight: 5,
+      opacity: 1,
+      fillOpacity: Math.min(0.86, Number(base.fillOpacity || 0.18) + 0.12),
+      className: 'ward-focused-shape'
+    });
     const wardStyle = (feature) => {
-      const critical = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(feature?.properties || {})));
+      const featureWardNo = normalizeWardNo(wardNumber(feature?.properties || {}));
+      const critical = criticalGroundwaterByNo.get(featureWardNo);
       const key = wardStatusKey(critical);
-      if (wardStatusFilter && key !== wardStatusFilter) return neutralWardStyle();
+      const isFocused = focusedWardNo && featureWardNo === focusedWardNo;
+      const shouldDim = (focusedWardNo && !isFocused) || (wardStatusFilter && key !== wardStatusFilter);
+      if (shouldDim) return dimmedWardStyle();
+      let style = neutralWardStyle();
       if (currentDataSource === 'kh' && isGroundwaterActionWard(critical)) {
-        return {
+        style = {
           color: '#111827',
           weight: 3,
           opacity: 1,
@@ -563,9 +607,8 @@
           fillColor: '#7f1d1d',
           fillOpacity: 0.74
         };
-      }
-      if (currentDataSource === 'kh' && isLinearMannKendallScreeningWard(critical)) {
-        return {
+      } else if (currentDataSource === 'kh' && isLinearMannKendallScreeningWard(critical)) {
+        style = {
           color: '#111827',
           weight: 3,
           opacity: 1,
@@ -573,9 +616,8 @@
           fillColor: '#c2410c',
           fillOpacity: 0.66
         };
-      }
-      if (currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(critical)) {
-        return {
+      } else if (currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(critical)) {
+        style = {
           color: '#111827',
           weight: 3,
           opacity: 1,
@@ -584,7 +626,7 @@
           fillOpacity: 0.64
         };
       }
-      return neutralWardStyle();
+      return isFocused ? focusedWardStyle(style) : style;
     };
     const hasCoordinateValue = (value) => value !== null && value !== undefined && String(value).trim() !== '';
     const hasValidLocation = (sensor) => {
@@ -741,15 +783,31 @@
       const wardsWithSensors = wardFeatures.filter((feature) => (feature.properties?._sensorCount || 0) > 0).length;
       if (els.wardSensorCount) els.wardSensorCount.textContent = formatNumber(wardsWithSensors);
       refreshWardPopups();
+      renderSensors();
     };
 
-    const sensorIcon = (sensor) => L.divIcon({
-      className: '',
-      html: `<div class="marker-pin" style="background:${colorForSensor(sensor)}"></div>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-      popupAnchor: [0, -10]
-    });
+    const sensorSymbolSvg = (sensor) => {
+      const category = sensor.dataCategory || 'none';
+      const color = colorForSensor(sensor);
+      if (category === 'none') {
+        return `<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 2 26 14 14 26 2 14Z" fill="${color}" stroke="#fff" stroke-width="3"/><path d="M14 8v7" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="14" cy="19" r="1.4" fill="#fff"/></svg>`;
+      }
+      const fill = category === 'water' ? '#fff' : color;
+      const stroke = category === 'water' ? color : '#fff';
+      const center = category === 'water' ? color : '#fff';
+      return `<svg viewBox="0 0 28 28" aria-hidden="true"><path d="M14 2C9.4 8 6.5 12.5 6.5 17a7.5 7.5 0 0 0 15 0C21.5 12.5 18.6 8 14 2Z" fill="${fill}" stroke="${stroke}" stroke-width="3"/><circle cx="14" cy="17" r="3.2" fill="${center}" opacity="0.95"/></svg>`;
+    };
+
+    const sensorIcon = (sensor) => {
+      const dimmed = focusedWardNo && normalizeWardNo(sensor.wardNo) !== focusedWardNo;
+      return L.divIcon({
+        className: '',
+        html: `<div class="sensor-symbol ${dimmed ? 'dimmed' : ''} ${sensor.dataCategory === 'none' ? 'warning' : ''}">${sensorSymbolSvg(sensor)}</div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -12]
+      });
+    };
 
     const popupHtml = (sensor) => `
       <strong>${sensor.uid}</strong>
@@ -1191,6 +1249,16 @@
           wardLayers.push(layer);
           layer.bindPopup(wardPopupHtml(feature));
           layer.on('click', () => selectWard(feature));
+          layer.on('mouseover', () => {
+            layer.bringToFront();
+            sensorLayer.bringToFront();
+          });
+          layer.on('mouseout', () => {
+            refreshWardPopups();
+            const selectedLayer = wardLayers.find((item) => normalizeWardNo(wardNumber(item.feature?.properties || {})) === focusedWardNo);
+            if (selectedLayer) selectedLayer.bringToFront();
+            sensorLayer.bringToFront();
+          });
         }
       }).addTo(map);
       map.fitBounds(shapeLayer.getBounds().pad(0.08));
@@ -2858,6 +2926,7 @@
           <button type="button" data-ward-tab="uids">UID Charts</button>
           <button type="button" data-ward-tab="downloads">Downloads</button>
         </nav>
+        ${wardCategoryCardHtml(criticalGw)}
         <section class="ward-tab-panel active" data-ward-panel="overview">
           ${criticalReasonHtml(criticalGw)}
           <section class="ward-summary-grid">
@@ -3407,6 +3476,7 @@
       const props = feature.properties || {};
       const count = props._sensorCount || 0;
       const selectedWardNo = wardNumber(props);
+      focusedWardNo = normalizeWardNo(selectedWardNo);
       const selectedWardName = normalizeWardName(wardName(props));
       const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(selectedWardNo));
       const wardSensors = sensors
@@ -3428,6 +3498,15 @@
       dischargeChart?.destroy();
       waterChart = null;
       dischargeChart = null;
+      refreshWardPopups();
+      renderSensors();
+      const selectedLayer = wardLayers.find((layer) => layer.feature === feature);
+      if (selectedLayer) {
+        selectedLayer.bringToFront();
+        const bounds = selectedLayer.getBounds?.();
+        if (bounds?.isValid?.()) map.fitBounds(bounds.pad(0.25), { animate: true, maxZoom: 14 });
+      }
+      sensorLayer.bringToFront();
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
       els.detailSubhead.textContent = criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action'
@@ -3448,7 +3527,10 @@
           delete feature.properties._specificCapacity;
         }
         const shapeLayer = wardLayers.find((layer) => layer.feature === feature);
-        if (shapeLayer) shapeLayer.bindPopup(wardPopupHtml(feature));
+        if (shapeLayer) {
+          shapeLayer.bindPopup(wardPopupHtml(feature));
+          shapeLayer.bringToFront();
+        }
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
@@ -3471,9 +3553,9 @@
       L.DomEvent.disableClickPropagation(div);
       div.innerHTML = `
         <div class="legend-title">Sensor data</div>
-        <button class="legend-row" data-filter="both" type="button"><span class="dot" style="background:#007a3d"></span>WL + discharge</button>
-        <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
-        <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
+        <button class="legend-row" data-filter="both" type="button"><span class="legend-sensor-icon drop both"></span>WL + discharge</button>
+        <button class="legend-row" data-filter="water" type="button"><span class="legend-sensor-icon drop water"></span>WL only</button>
+        <button class="legend-row" data-filter="none" type="button"><span class="legend-sensor-icon warning"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
@@ -3510,6 +3592,7 @@
 
     document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
       button.addEventListener('click', () => {
+        focusedWardNo = '';
         wardStatusFilter = wardStatusFilter === button.dataset.wardFilter ? '' : button.dataset.wardFilter;
         updateLegendFilterUi();
         refreshWardPopups();
@@ -3674,3 +3757,4 @@
   </script>
 </body>
 </html>
+

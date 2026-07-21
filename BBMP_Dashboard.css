@@ -570,12 +570,73 @@
       border-radius: 6px;
     }
 
-    .marker-pin {
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      border: 2px solid #fff;
-      box-shadow: 0 1px 7px rgba(0, 0, 0, 0.35);
+    .sensor-symbol {
+      width: 24px;
+      height: 24px;
+      filter: drop-shadow(0 2px 5px rgba(15, 23, 42, 0.38));
+      transform: translateZ(0);
+      transition: opacity 120ms ease, transform 120ms ease, filter 120ms ease;
+    }
+
+    .sensor-symbol svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .sensor-symbol.warning {
+      filter: drop-shadow(0 2px 5px rgba(127, 29, 29, 0.4));
+    }
+
+    .sensor-symbol.dimmed {
+      opacity: 0.24;
+      filter: grayscale(0.45) drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
+      transform: scale(0.86);
+    }
+
+    .ward-focused-shape {
+      filter: drop-shadow(0 8px 10px rgba(15, 23, 42, 0.45));
+    }
+
+    .ward-category-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px 14px;
+      background: #f8fafc;
+      color: var(--ink);
+      display: grid;
+      gap: 4px;
+    }
+
+    .ward-category-card strong {
+      font-size: 14px;
+    }
+
+    .ward-category-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .ward-category-card.critical {
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+
+    .ward-category-card.warning {
+      border-color: #fed7aa;
+      background: #fff7ed;
+    }
+
+    .ward-category-card.unverified {
+      border-color: #ddd6fe;
+      background: #f5f3ff;
+    }
+
+    .ward-category-card.neutral {
+      border-color: #cbd5e1;
+      background: #f8fafc;
     }
 
     .toast {
@@ -613,6 +674,32 @@
       align-items: center;
       gap: 8px;
       white-space: nowrap;
+    }
+
+    .legend-sensor-icon {
+      width: 14px;
+      height: 14px;
+      flex: none;
+      display: inline-block;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+    }
+
+    .legend-sensor-icon.drop {
+      border-radius: 70% 70% 70% 8%;
+      transform: rotate(-45deg);
+      border: 2px solid #007a3d;
+      background: #007a3d;
+    }
+
+    .legend-sensor-icon.drop.water {
+      border-color: #1d4ed8;
+      background: #fff;
+    }
+
+    .legend-sensor-icon.warning {
+      transform: rotate(45deg);
+      border: 2px solid #fff;
+      background: #d12f2f;
     }
 
     .legend-title {
