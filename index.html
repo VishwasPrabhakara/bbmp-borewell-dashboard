@@ -743,6 +743,9 @@
       for (const layer of wardLayers) {
         if (layer.feature) {
           layer.setStyle(wardStyle(layer.feature));
+          const layerWardNo = normalizeWardNo(wardNumber(layer.feature.properties || {}));
+          const isFocusedLayer = Boolean(focusedWardNo && layerWardNo === focusedWardNo);
+          layer._path?.classList.toggle('ward-focused-shape', isFocusedLayer);
           layer.bindPopup(wardPopupHtml(layer.feature));
         }
       }
