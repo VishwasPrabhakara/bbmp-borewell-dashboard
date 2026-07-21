@@ -851,6 +851,12 @@
       renderList(visible);
     };
 
+    const bringSensorsToFront = () => {
+      sensorLayer.eachLayer((layer) => {
+        if (typeof layer.bringToFront === 'function') layer.bringToFront();
+      });
+    };
+
     const renderList = (visible) => {
       els.sensorList.innerHTML = '';
       if (!els.search.value.trim() && !legendFilter && !qcFilter) {
@@ -1239,13 +1245,13 @@
           layer.on('click', () => selectWard(feature));
           layer.on('mouseover', () => {
             layer.bringToFront();
-            sensorLayer.bringToFront();
+            bringSensorsToFront();
           });
           layer.on('mouseout', () => {
             refreshWardPopups();
             const selectedLayer = wardLayers.find((item) => normalizeWardNo(wardNumber(item.feature?.properties || {})) === focusedWardNo);
             if (selectedLayer) selectedLayer.bringToFront();
-            sensorLayer.bringToFront();
+            bringSensorsToFront();
           });
         }
       }).addTo(map);
@@ -1289,7 +1295,7 @@
         }
       }).addTo(map);
       lakeLayer.bringToFront();
-      sensorLayer.bringToFront();
+      bringSensorsToFront();
     };
 
     const applySharedDashboardData = (consumptionPayload = { wards: [] }, populationPayload = { wards: [] }) => {
@@ -3492,7 +3498,7 @@
       if (selectedLayer) {
         selectedLayer.bringToFront();
       }
-      sensorLayer.bringToFront();
+      bringSensorsToFront();
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
       els.detailSubhead.textContent = criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action'
@@ -3511,7 +3517,7 @@
             paddingTopLeft: [20, 20],
             paddingBottomRight: [24, 24]
           });
-          sensorLayer.bringToFront();
+          bringSensorsToFront();
         }
       }, 260);
 
@@ -3758,4 +3764,5 @@
   </script>
 </body>
 </html>
+
 
