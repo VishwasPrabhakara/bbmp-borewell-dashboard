@@ -2914,14 +2914,8 @@
       Number.isFinite(mk) &&
       Number.isFinite(pValue);
 
-    const senDecline =
-      sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
-
     const linearDecline =
       linear > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
-
-    const senRise =
-      sen < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
 
     const linearRise =
       linear < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
@@ -2941,7 +2935,6 @@
       dashboardMapCategory =
         'Insufficient groundwater data';
     } else if (
-      senDecline &&
       linearDecline &&
       mk > 0 &&
       significant
@@ -2952,7 +2945,6 @@
         'Critical: Ward-average groundwater decline';
       dashboardAction = 'Yes';
     } else if (
-      senDecline &&
       linearDecline &&
       mk > 0
     ) {
@@ -2962,7 +2954,6 @@
         'Warning: Possible ward-average decline';
       dashboardAction = 'Yes';
     } else if (
-      senRise &&
       linearRise &&
       mk < 0 &&
       significant
@@ -2971,7 +2962,6 @@
       dashboardMapCategory =
         'Confirmed groundwater rise';
     } else if (
-      senRise &&
       linearRise &&
       mk < 0
     ) {
@@ -2990,7 +2980,7 @@
       dashboardMapCategory,
 
       declineStrengthFtPerWeek:
-        Number.isFinite(sen) ? sen : null,
+        Number.isFinite(linear) ? linear : null,
 
       linearSlopeFtPerWeek:
         Number.isFinite(linear)
@@ -4661,5 +4651,4 @@
   </script>
 </body>
 </html>
-
 
