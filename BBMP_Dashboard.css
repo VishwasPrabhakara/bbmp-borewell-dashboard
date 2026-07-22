@@ -135,7 +135,30 @@
       background: #fff;
       white-space: nowrap;
     }
+    
+    #clearSelection {
+  border: 1px solid #64748b;
+  background: #f8fafc;
+  color: #334155;
+}
 
+#clearSelection:not(:disabled):hover {
+  background: #e2e8f0;
+  border-color: #475569;
+}
+
+#clearSelection:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.controls .button-row {
+  flex-wrap: wrap;
+}
+
+.controls .button-row > button {
+  min-width: 0;
+}
     .details-close:hover {
       color: var(--ink);
       border-color: var(--ink);

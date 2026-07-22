@@ -29,6 +29,7 @@
         <div class="button-row">
           <button id="fitSensors" class="primary">Fit Borewells</button>
           <button id="refreshData">Refresh Data</button>
+          <button id="clearSelection" type="button" disabled>Clear Selection</button>
         </div>
       </section>
 
@@ -241,12 +242,14 @@
     let activeSpecificCapacityData = null;
     let fullscreenChart = null;
     let fullscreenSource = null;
+    let selectionSequence = 0;
 
     const els = {
       refreshStatus: document.getElementById('refreshStatus'),
       search: document.getElementById('search'),
       fitSensors: document.getElementById('fitSensors'),
       refreshData: document.getElementById('refreshData'),
+      clearSelection: document.getElementById('clearSelection'),
       sensorList: document.getElementById('sensorList'),
       totalCount: document.getElementById('totalCount'),
       withDataCount: document.getElementById('withDataCount'),
@@ -404,26 +407,23 @@
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const criticalReasonHtml = (critical) => {
       if (!critical || wardMapCategory(critical) === 'Not current groundwater action') return '';
-      const slope = formatTrend(critical.senSlopeFtPerWeek, 'ft/week', 4);
-      const linearSlope = formatTrend(critical.linearSlopeFtPerWeek, 'ft/week', 4);
-      const pValue = critical.mannKendallPValue == null ? '-' : formatNumber(critical.mannKendallPValue, 4);
       const classified = formatNumber(critical.classifiedSensorCount || 0);
       const declining = formatNumber(critical.confirmedDecliningSensorCount || 0);
       const category = wardMapCategory(critical);
       return `
         <div class="critical-reason ${category.startsWith('Warning') ? 'screening' : category.startsWith('Unverified') ? 'unverified' : ''}">
-          <strong>Why this ward is marked</strong>
+          <strong>Why this ward is marked on the map</strong>
           <p>${category === 'Critical: Groundwater Decline'
-            ? 'Cleaned weekly groundwater levels show a consistent decline signal and need priority review.'
+            ? 'The backend ward-screening method found sufficient groundwater-decline evidence for priority review.'
             : category === 'Warning: Possible Decline'
-              ? 'The sensitive statistical screen flags this ward using a positive linear slope and significant Mann-Kendall trend, but it is not in the robust action set.'
+              ? 'The backend screening method found a possible decline signal, but the evidence is weaker than the critical group.'
               : 'This ward was in the old consumption-critical list, but current groundwater sensor data is not available, so it remains unverified.'}</p>
-          <ul>
-            <li>Theil-Sen decline rate: ${slope}.</li>
-            <li>Linear slope: ${linearSlope}.</li>
-            <li>Mann-Kendall p-value: ${pValue}.</li>
-            <li>${declining} of ${classified} classifiable borewells independently show confirmed decline.</li>
-          </ul>
+          ${category.startsWith('Unverified') ? '' : `
+            <ul>
+              <li>${declining} of ${classified} classifiable borewells independently show confirmed decline.</li>
+              <li>The graph below calculates its own ward-average Theil-Sen, linear slope, Mann-Kendall result, and p-value from the exact weekly values displayed.</li>
+            </ul>
+          `}
         </div>
       `;
     };
@@ -643,10 +643,31 @@
       showToast.timer = window.setTimeout(() => els.toast.classList.remove('show'), 5200);
     };
 
+    const updateClearSelectionButton = () => {
+      if (!els.clearSelection) return;
+
+      const hasSelection = Boolean(
+        selectedSensor ||
+        focusedWardNo ||
+        activeWardData
+      );
+
+      els.clearSelection.disabled = !hasSelection;
+    };
+
     const showSensorLoading = (message = 'Loading sensors...') => {
+      selectionSequence += 1;
+
       sensorLayer.clearLayers();
       sensors = [];
+
       selectedSensor = null;
+      focusedWardNo = '';
+      activeWardData = null;
+      activeSpecificCapacityData = null;
+      waterPoints = [];
+
+      updateClearSelectionButton();
       els.totalCount.textContent = '0';
       els.withDataCount.textContent = '0';
       els.withoutDataCount.textContent = '0';
@@ -703,7 +724,6 @@
         ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
         ${criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action' ? `<div><strong>Map category:</strong> ${htmlEscape(wardMapCategory(criticalGw))}</div>` : ''}
         ${criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action' ? `<div><strong>Why marked:</strong> ${htmlEscape(criticalGw.updateReason || 'Groundwater decline evidence needs action/review.')}</div>` : ''}
-        ${criticalGw?.linearMannKendallCritical === 'Yes' ? `<div><strong>Linear + MK:</strong> ${formatTrend(criticalGw.linearSlopeFtPerWeek, 'ft/week', 2)}, p=${formatNumber(criticalGw.mannKendallPValue, 3)}</div>` : ''}
         <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
@@ -903,6 +923,118 @@
       const bounds = L.latLngBounds(visible.map((sensor) => [Number(sensor.lat), Number(sensor.lng)]));
       map.fitBounds(bounds.pad(0.18), { maxZoom: 15 });
     };
+
+    const clearCurrentSelection = () => {
+      // Invalidate any pending ward or sensor API request.
+        selectionSequence += 1;
+
+        selectedSensor = null;
+        focusedWardNo = '';
+        activeWardData = null;
+        activeSpecificCapacityData = null;
+        waterPoints = [];
+
+        selectedRange = 'week';
+        showGroundwaterOutliers = false;
+        showCycleConnector = true;
+
+        map.closePopup();
+
+        waterChart?.destroy();
+        dischargeChart?.destroy();
+
+        waterChart = null;
+        dischargeChart = null;
+
+        clearWardInlineCharts();
+        closeChartFullscreen();
+
+        els.app.classList.remove(
+          'critical-ward-selected',
+          'screening-ward-selected',
+          'unverified-ward-selected',
+          'chart-wide'
+        );
+
+        els.detailTitle.textContent = 'Select a borewell';
+        els.detailSubhead.textContent =
+          'Click a marker or ward to view groundwater details and time-series charts.';
+
+        els.detailUid.textContent = '-';
+        els.detailWardNo.textContent = '-';
+        els.detailWardName.textContent = '-';
+        els.detailLatLon.textContent = '-';
+        els.detailFirstData.textContent = '-';
+        els.detailLastData.textContent = '-';
+        els.detailReadings.textContent = '-';
+        els.detailDataType.textContent = '-';
+        els.detailQcStatus.textContent = '-';
+        els.detailQcScore.textContent = '-';
+        els.detailQcFlags.textContent = '-';
+
+        if (els.wardDetailPanel) {
+          els.wardDetailPanel.innerHTML = '';
+          els.wardDetailPanel.style.display = 'none';
+        }
+
+        if (els.sensorDetailGrid) {
+          els.sensorDetailGrid.style.display = '';
+        }
+
+        if (els.sensorExportControls) {
+          els.sensorExportControls.style.display = 'none';
+        }
+
+        if (els.timeRangeSection) {
+          els.timeRangeSection.style.display = 'none';
+        }
+
+        if (els.waterChartBox) {
+          els.waterChartBox.style.display = 'none';
+        }
+
+        if (els.dischargeChartBox) {
+          els.dischargeChartBox.style.display = 'none';
+        }
+
+        document.querySelectorAll('.range-tabs button').forEach((button) => {
+          button.classList.toggle(
+            'active',
+            button.dataset.range === 'week'
+          );
+        });
+
+        wardLayers.forEach((layer) => {
+          layer._path?.classList.remove('ward-focused-shape');
+        });
+
+        els.app.classList.add('right-collapsed');
+
+        els.toggleRight.textContent = '‹';
+        els.toggleRight.title = 'Expand details panel';
+        els.toggleRight.setAttribute(
+          'aria-label',
+          els.toggleRight.title
+        );
+
+        refreshWardPopups();
+        renderSensors();
+        updateClearSelectionButton();
+
+        window.setTimeout(() => {
+          map.invalidateSize();
+
+          const bounds = shapeLayer?.getBounds?.();
+
+          if (bounds?.isValid?.()) {
+            map.fitBounds(bounds.pad(0.08));
+          } else {
+            fitSensors();
+          }
+        }, 220);
+
+        showToast('Selection cleared.');
+      };
 
     const csvEscape = (value) => {
       const text = String(value ?? '');
@@ -2140,9 +2272,19 @@
     };
 
     const selectSensor = async (sensor, moveMap) => {
+      const currentSelectionSequence = ++selectionSequence;
+
       selectedSensor = sensor;
+      focusedWardNo = '';
       activeWardData = null;
       activeSpecificCapacityData = null;
+      waterPoints = [];
+
+      map.closePopup();
+
+      updateClearSelectionButton();
+      refreshWardPopups();
+      renderSensors();
       els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
       setSensorSectionsVisible(true);
 
@@ -2184,13 +2326,36 @@
       renderList(filteredSensors());
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/water-level?uid=${encodeURIComponent(sensor.uid)}&${sourceQuery()}`);
-        const payload = await response.json();
+        const response = await fetch(
+          `${API_BASE_URL}/api/water-level?uid=${encodeURIComponent(sensor.uid)}&${sourceQuery()}`
+        );
+
+        const payload = response.ok
+          ? await response.json()
+          : { points: [] };
+
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          selectedSensor?.uid !== sensor.uid
+        ) {
+          return;
+        }
+
         waterPoints = payload.points || [];
       } catch (error) {
+        if (currentSelectionSequence !== selectionSequence) return;
+
         waterPoints = [];
         showToast(`Could not load water-level data for ${sensor.uid}`);
       }
+
+      if (
+        currentSelectionSequence !== selectionSequence ||
+        selectedSensor?.uid !== sensor.uid
+      ) {
+        return;
+      }
+
       renderCharts();
     };
 
@@ -2407,11 +2572,120 @@
     };
     const slopeClass = (slope) => Number(slope) > 0 ? 'bad' : Number(slope) < 0 ? 'good' : '';
     const slopeLabel = (slope) => {
-      if (!Number.isFinite(Number(slope))) return 'Not computed';
-      if (Number(slope) > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'Declining';
-      if (Number(slope) < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'Improving';
-      return 'Mostly stable';
-    };
+        if (!Number.isFinite(Number(slope))) return 'Not computed';
+        if (Number(slope) > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'Declining';
+        if (Number(slope) < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'Improving';
+        return 'Mostly stable';
+      };
+     const plottedGroundwaterTrend = (fit) => {
+        const rawSenSlope = fit?.senSlopeFtPerWeek;
+        const rawLinearSlope = fit?.slopeFtPerWeek;
+        const rawMannKendallS = fit?.mannKendallS;
+        const rawPValue = fit?.mannKendallPValue;
+
+        const pointCount = Number(fit?.pointCount || 0);
+
+        const hasSenSlope =
+          rawSenSlope !== null &&
+          rawSenSlope !== undefined &&
+          Number.isFinite(Number(rawSenSlope));
+
+        const hasLinearSlope =
+          rawLinearSlope !== null &&
+          rawLinearSlope !== undefined &&
+          Number.isFinite(Number(rawLinearSlope));
+
+        if (
+          pointCount < 4 ||
+          !hasSenSlope ||
+          !hasLinearSlope
+        ) {
+          return {
+            label: 'Insufficient data',
+            className: ''
+          };
+        }
+
+        const senSlope = Number(rawSenSlope);
+        const linearSlope = Number(rawLinearSlope);
+
+        const mannKendallS =
+          rawMannKendallS !== null &&
+          rawMannKendallS !== undefined &&
+          Number.isFinite(Number(rawMannKendallS))
+            ? Number(rawMannKendallS)
+            : null;
+
+        const pValue =
+          rawPValue !== null &&
+          rawPValue !== undefined &&
+          Number.isFinite(Number(rawPValue))
+            ? Number(rawPValue)
+            : null;
+
+        const senDeclining =
+          senSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+        const linearDeclining =
+          linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+        const senImproving =
+          senSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+        const linearImproving =
+          linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+        const significant =
+          pValue !== null &&
+          pValue <= TREND_SIGNIFICANCE_ALPHA;
+
+        if (
+          senDeclining &&
+          linearDeclining &&
+          mannKendallS !== null &&
+          mannKendallS > 0
+        ) {
+          return {
+            label: significant
+              ? 'Confirmed groundwater decline'
+              : 'Possible groundwater decline',
+            className: 'bad'
+          };
+        }
+
+        if (
+          senImproving &&
+          linearImproving &&
+          mannKendallS !== null &&
+          mannKendallS < 0
+        ) {
+          return {
+            label: significant
+              ? 'Confirmed groundwater rise'
+              : 'Possible groundwater rise',
+            className: 'good'
+          };
+        }
+
+        if (senDeclining || linearDeclining) {
+          return {
+            label: 'Mixed indicators — possible decline',
+            className: 'bad'
+          };
+        }
+
+        if (senImproving || linearImproving) {
+          return {
+            label: 'Mixed indicators — possible rise',
+            className: 'good'
+          };
+        }
+
+        return {
+          label: 'Mostly stable',
+          className: ''
+        };
+      };
     const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
       const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
         const fit = weeklySlopeFit(ward.weekly || []);
@@ -2738,6 +3012,7 @@
       const weeklyCleanPreview = cleanWeeklyGroundwater(wardData?.weekly || []);
       const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
       const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
+      const plottedTrend = plottedGroundwaterTrend(slopeFit);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
       const hasWardWeeklyData = cleanWeeklyPoints.length >= 2;
@@ -2979,13 +3254,82 @@
           ${hasWardWeeklyData
             ? `
               <section class="ward-summary-grid compact slope-strip">
-                ${wardMetric('Theil-Sen rate', formatTrend(criticalGw?.medianSensorTheilSenSlopeFtPerWeek ?? slopeFit.senSlopeFtPerWeek, 'ft/week', 2), slopeClass(criticalGw?.medianSensorTheilSenSlopeFtPerWeek ?? slopeFit.senSlopeFtPerWeek))}
-                ${wardMetric('Linear slope', formatTrend(criticalGw?.linearSlopeFtPerWeek ?? slopeFit.slopeFtPerWeek, 'ft/week', 2), slopeClass(criticalGw?.linearSlopeFtPerWeek ?? slopeFit.slopeFtPerWeek))}
-                ${wardMetric('Mann-Kendall', slopeFit.mannKendallTrend || 'Not computed', slopeClass(slopeFit.mannKendallS))}
-                ${wardMetric('MK p-value', slopeFit.mannKendallPValue == null ? '-' : formatNumber(slopeFit.mannKendallPValue, 3))}
-                ${wardMetric('Map Category', criticalGw ? wardMapCategory(criticalGw) : slopeLabel(slopeFit.senSlopeFtPerWeek), criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action' ? 'bad' : '')}
-                ${wardMetric('Points used', formatNumber(slopeFit.pointCount || 0))}
-              </section>
+                  ${wardMetric(
+                    'Ward-average Theil-Sen rate',
+                    formatTrend(
+                      slopeFit.senSlopeFtPerWeek,
+                      'ft/week',
+                      2
+                    ),
+                    slopeClass(slopeFit.senSlopeFtPerWeek)
+                  )}
+
+                  ${wardMetric(
+                    'Ward-average linear slope',
+                    formatTrend(
+                      slopeFit.slopeFtPerWeek,
+                      'ft/week',
+                      2
+                    ),
+                    slopeClass(slopeFit.slopeFtPerWeek)
+                  )}
+
+                  ${wardMetric(
+                      'Linear R²',
+                      slopeFit.r2 == null
+                        ? '-'
+                        : formatNumber(slopeFit.r2, 3)
+                    )}
+
+                  ${wardMetric(
+                    'Mann-Kendall',
+                    slopeFit.mannKendallTrend || 'Not computed',
+                    slopeClass(slopeFit.mannKendallS)
+                  )}
+
+                  ${wardMetric(
+                    'MK p-value',
+                    slopeFit.mannKendallPValue == null
+                      ? '-'
+                      : formatNumber(
+                          slopeFit.mannKendallPValue,
+                          3
+                        )
+                  )}
+
+                  ${wardMetric(
+                    'Plotted Trend Interpretation',
+                    plottedTrend.label,
+                    plottedTrend.className
+                  )}
+
+                  ${wardMetric(
+                    'Points used',
+                    formatNumber(slopeFit.pointCount || 0)
+                  )}
+
+                  ${criticalGw
+                    ? wardMetric(
+                        'Map Screening Category',
+                        wardMapCategory(criticalGw),
+                        wardMapCategory(criticalGw) !==
+                          'Not current groundwater action'
+                          ? 'bad'
+                          : ''
+                      )
+                    : ''
+                  }
+                </section>
+                <div class="ward-note">
+                  The Theil-Sen rate, linear slope, linear R², Mann-Kendall result, p-value,
+                  and plotted interpretation above are all calculated from the same cleaned
+                  weekly ward-average values shown in this graph. Positive depth slope means
+                  groundwater is becoming deeper and indicates decline. Negative depth slope
+                  means groundwater is becoming shallower and indicates a possible rise. The
+                  map screening category is a separate backend classification and is shown only
+                  as the map status, not as a second graph slope.
+                </div>
+
               <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
               ${weeklyOutlierNote}
             `
@@ -3484,10 +3828,22 @@
     };
 
     const selectWard = async (feature) => {
+      const currentSelectionSequence = ++selectionSequence;
+
       const props = feature.properties || {};
       const count = props._sensorCount || 0;
-      const selectedWardNo = wardNumber(props);
-      focusedWardNo = normalizeWardNo(selectedWardNo);
+      const selectedWardNo = normalizeWardNo(wardNumber(props));
+
+      selectedSensor = null;
+      focusedWardNo = selectedWardNo;
+      activeWardData = null;
+      activeSpecificCapacityData = null;
+      waterPoints = [];
+
+      map.closePopup();
+
+      updateClearSelectionButton();
+
       const selectedWardName = normalizeWardName(wardName(props));
       const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(selectedWardNo));
       const wardSensors = sensors
@@ -3502,7 +3858,6 @@
       els.toggleRight.textContent = '›';
       els.toggleRight.title = 'Collapse details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
-      selectedSensor = null;
       waterPoints = [];
       clearWardInlineCharts();
       waterChart?.destroy();
@@ -3523,6 +3878,13 @@
         : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
       const zoomToSelectedWard = () => {
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          focusedWardNo !== selectedWardNo
+        ) {
+          return;
+        }
+
         map._size = null;
         map.invalidateSize({ pan: false, animate: false });
         window.requestAnimationFrame(() => {
@@ -3540,6 +3902,13 @@
               paddingBottomRight: [28, 24]
             });
             window.setTimeout(() => {
+              if (
+                currentSelectionSequence !== selectionSequence ||
+                focusedWardNo !== selectedWardNo
+              ) {
+                return;
+              }
+
               layer.bringToFront();
               layer._path?.classList.add('ward-focused-shape');
               keepLayerInsideMapView(layer);
@@ -3552,10 +3921,30 @@
       window.setTimeout(zoomToSelectedWard, 520);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`);
-        const payload = response.ok ? await response.json() : { ward: null };
-        const capacityPayload = await loadWardSpecificCapacity(selectedWardNo);
-        const capacityKey = normalizeWardNo(selectedWardNo);
+        const response = await fetch(
+          `${API_BASE_URL}/api/ward-weekly-levels?ward_no=${encodeURIComponent(selectedWardNo)}&${sourceQuery()}`
+        );
+
+        const payload = response.ok
+          ? await response.json()
+          : { ward: null };
+
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          focusedWardNo !== selectedWardNo
+        ) {
+          return;
+        }
+
+        const capacityPayload =
+          await loadWardSpecificCapacity(selectedWardNo);
+
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          focusedWardNo !== selectedWardNo
+        ) {
+          return;
+        }
         if (hasValidSpecificCapacity(capacityPayload.ward)) {
           specificCapacityByWardNo.set(normalizeWardNo(selectedWardNo), capacityPayload.ward);
           feature.properties._specificCapacity = capacityPayload.ward;
@@ -3569,18 +3958,57 @@
           shapeLayer.bringToFront();
         }
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
+        if (
+            currentSelectionSequence !== selectionSequence ||
+            focusedWardNo !== selectedWardNo
+          ) {
+            return;
+          }
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
         renderWardDetailCharts(wardData, capacityPayload);
-      } catch (error) {
-        const wardData = wardWeeklyByNo.get(selectedWardNo) || null;
-        const capacityPayload = await loadWardSpecificCapacity(selectedWardNo);
+     } catch (error) {
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          focusedWardNo !== selectedWardNo
+        ) {
+          return;
+        }
+
+        const wardData =
+          wardWeeklyByNo.get(selectedWardNo) ||
+          null;
+
+        const capacityPayload =
+          await loadWardSpecificCapacity(selectedWardNo);
+
+        if (
+          currentSelectionSequence !== selectionSequence ||
+          focusedWardNo !== selectedWardNo
+        ) {
+          return;
+        }
+
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
-        els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
-        renderWardDetailCharts(wardData, capacityPayload);
-        showToast(`Could not load ward weekly data for ward ${selectedWardNo}.`);
+
+        els.wardDetailPanel.innerHTML =
+          buildWardDetailHtml(
+            props,
+            wardData,
+            wardSensors,
+            capacityPayload
+          );
+
+        renderWardDetailCharts(
+          wardData,
+          capacityPayload
+        );
+
+        showToast(
+          `Could not load ward weekly data for ward ${selectedWardNo}.`
+        );
       }
     };
 
@@ -3618,12 +4046,54 @@
       });
     };
 
-    document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
+    document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
       button.addEventListener('click', () => {
-        legendFilter = legendFilter === button.dataset.filter ? '' : button.dataset.filter;
+        const hadSelection = Boolean(
+          selectedSensor ||
+          focusedWardNo ||
+          activeWardData
+        );
+
+        if (hadSelection) {
+          selectionSequence += 1;
+
+          selectedSensor = null;
+          focusedWardNo = '';
+          activeWardData = null;
+          activeSpecificCapacityData = null;
+          waterPoints = [];
+
+          waterChart?.destroy();
+          dischargeChart?.destroy();
+
+          waterChart = null;
+          dischargeChart = null;
+
+          clearWardInlineCharts();
+          closeChartFullscreen();
+
+          els.app.classList.remove(
+            'critical-ward-selected',
+            'screening-ward-selected',
+            'unverified-ward-selected',
+            'chart-wide'
+          );
+
+          els.wardDetailPanel.innerHTML = '';
+          els.wardDetailPanel.style.display = 'none';
+
+          els.app.classList.add('right-collapsed');
+          updateClearSelectionButton();
+        }
+
+        wardStatusFilter =
+          wardStatusFilter === button.dataset.wardFilter
+            ? ''
+            : button.dataset.wardFilter;
+
         updateLegendFilterUi();
+        refreshWardPopups();
         renderSensors();
-        fitSensors();
       });
     });
 
@@ -3758,6 +4228,10 @@
     els.search.addEventListener('input', renderSensors);
     els.fitSensors.addEventListener('click', fitSensors);
     els.refreshData.addEventListener('click', refreshData);
+    els.clearSelection?.addEventListener(
+      'click',
+      clearCurrentSelection
+    );
     els.toggleLeft.addEventListener('click', () => {
       els.app.classList.toggle('left-collapsed');
       const collapsed = els.app.classList.contains('left-collapsed');
