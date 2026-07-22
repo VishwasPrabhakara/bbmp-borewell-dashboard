@@ -377,11 +377,7 @@
         'Critical: Ward-average groundwater decline'
     );
 
-    const isGroundwaterWatchWard = (critical) => (
-      critical?.groundwaterStatus === 'Watch'
-      || critical?.dashboardMapCategory ===
-        'Warning: Possible ward-average decline'
-    );
+    const isGroundwaterWatchWard = () => false;
 
     const isGroundwaterActionWard = (critical) => (
       isGroundwaterCriticalWard(critical)
@@ -406,10 +402,6 @@
 
       if (isGroundwaterCriticalWard(critical)) {
         return 'Critical: Groundwater Decline';
-      }
-
-      if (isGroundwaterWatchWard(critical)) {
-        return 'Warning: Possible Decline';
       }
 
       if (
@@ -466,7 +458,7 @@
 
       const visibleCategories = [
         'Critical: Groundwater Decline',
-        'Warning: Possible Decline',
+        'Groundwater Decline Review',
         'Unverified: Old Critical Ward'
       ];
 
@@ -545,12 +537,6 @@
       className: 'critical',
       explanation:
         'The cleaned ward-average weekly groundwater series shows a statistically significant decline.'
-    },
-
-    'Warning: Possible Decline': {
-      className: 'warning',
-      explanation:
-        'The cleaned ward-average weekly groundwater series shows a declining direction, but the statistical confidence is weaker.'
     },
 
     'Confirmed Groundwater Rise': {
@@ -905,7 +891,7 @@
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
-        ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Warning: Possible Decline</span></div>` : ''}
+        ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
         <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
       `;
     };
@@ -2785,7 +2771,7 @@
           return {
             label: significant
               ? 'Confirmed groundwater decline'
-              : 'Possible groundwater decline',
+              : 'Groundwater decline review',
             className: 'bad'
           };
         }
@@ -2804,7 +2790,7 @@
 
         if (linearDeclining) {
           return {
-            label: 'Linear trend indicates possible decline',
+            label: 'Groundwater decline review',
             className: 'bad'
           };
         }
@@ -2939,11 +2925,11 @@
       linearDecline &&
       mk > 0
     ) {
-      groundwaterStatus = 'Watch';
-      groundwaterDirection = 'Possible decline';
+      groundwaterStatus = 'Normal';
+      groundwaterDirection = 'Stable / mixed';
       dashboardMapCategory =
-        'Warning: Possible ward-average decline';
-      dashboardAction = 'Yes';
+        'Stable / mixed groundwater trend';
+      dashboardAction = 'No';
     } else if (
       linearRise &&
       mk < 0 &&
@@ -3020,7 +3006,7 @@
         const reason = localRow.groundwaterStatus === 'Critical'
           ? `Critical groundwater decline: the plotted cleaned ward-average weekly graph has a linear slope of ${formatNumber(linearSlope, 2)} ft/week and Mann-Kendall p-value ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
           : localRow.groundwaterStatus === 'Watch'
-          ? `Possible groundwater decline: the plotted cleaned ward-average weekly graph has a positive linear slope, but Mann-Kendall is not statistically significant.`
+          ? `Groundwater decline review: the plotted cleaned ward-average weekly graph has a positive linear slope, but Mann-Kendall is not statistically significant.`
           : localRow.groundwaterDirection === 'Improving'
           ? `Confirmed groundwater rise: the plotted cleaned ward-average weekly graph has a negative linear slope and statistically significant Mann-Kendall trend.`
           : localRow.groundwaterDirection === 'Possible improvement'
@@ -4453,7 +4439,7 @@
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
-        <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
+        <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Groundwater Decline Review</button>
         <button class="legend-row" data-ward-filter="unverified" type="button"><span class="swatch" style="background:#4c1d95"></span>Unverified: Old Critical</button>
         <div class="legend-note">
           Ward categories are based on the cleaned ward-average
