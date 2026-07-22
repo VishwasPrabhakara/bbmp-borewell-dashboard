@@ -2686,32 +2686,97 @@
           className: ''
         };
       };
-    const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
-      const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
-        const fit = weeklySlopeFit(ward.weekly || []);
-        const sen = Number(fit.senSlopeFtPerWeek);
-        const mk = Number(fit.mannKendallS);
-        const pValue = Number(fit.mannKendallPValue);
-        const pointCount = Number(fit.pointCount || 0);
-        const significantDecline = pointCount >= 4
-          && sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
-          && mk > 0
-          && pValue <= TREND_SIGNIFICANCE_ALPHA;
+
+      const borewellAgreementSummary = (critical) => {
+        const classifiedCount = Number(
+          critical?.classifiedSensorCount || 0
+        );
+
+        const confirmedDecliningCount = Number(
+          critical?.confirmedDecliningSensorCount || 0
+        );
+
+        const decliningPercent = classifiedCount > 0
+          ? (confirmedDecliningCount / classifiedCount) * 100
+          : null;
+
+        const rawMedianSlope =
+          critical?.medianSensorTheilSenSlopeFtPerWeek;
+
+        const medianSensorSlope =
+          rawMedianSlope !== null &&
+          rawMedianSlope !== undefined &&
+          Number.isFinite(Number(rawMedianSlope))
+            ? Number(rawMedianSlope)
+            : null;
+
+        const hasMinimumSensors = classifiedCount >= 2;
+
+        const hasMajorityDeclining =
+          decliningPercent !== null &&
+          decliningPercent >= 50;
+
+        const hasPositiveMedianSlope =
+          medianSensorSlope !== null &&
+          medianSensorSlope >
+            LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+        let label = 'Insufficient individual-borewell evidence';
+        let className = '';
+
+        if (
+          hasMinimumSensors &&
+          hasMajorityDeclining &&
+          hasPositiveMedianSlope
+        ) {
+          label = 'Majority agreement indicates groundwater decline';
+          className = 'bad';
+        } else if (
+          classifiedCount > 0 &&
+          confirmedDecliningCount > 0
+        ) {
+          label = 'Some borewells show confirmed decline';
+          className = 'bad';
+        } else if (classifiedCount > 0) {
+          label = 'No majority decline among classifiable borewells';
+          className = 'good';
+        }
+
         return {
-          wardNo: ward.wardNo,
-          wardName: ward.wardName,
-          groundwaterStatus: significantDecline ? 'Watch' : 'Normal',
-          groundwaterDirection: significantDecline ? 'Possible decline' : pointCount >= 4 ? 'Mostly stable' : 'Not computed',
-          declineStrengthFtPerWeek: Number.isFinite(sen) ? sen : null,
-          linearSlopeFtPerWeek: Number.isFinite(Number(fit.slopeFtPerWeek)) ? Number(Number(fit.slopeFtPerWeek).toFixed(4)) : null,
-          senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
-          mannKendallS: Number.isFinite(mk) ? mk : null,
-          mannKendallPValue: Number.isFinite(pValue) ? pValue : null,
-          pointCount
+          classifiedCount,
+          confirmedDecliningCount,
+          decliningPercent,
+          medianSensorSlope,
+          label,
+          className
         };
-      });
-      return { wards: candidates };
-    };
+      };
+      const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
+        const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
+          const fit = weeklySlopeFit(ward.weekly || []);
+          const sen = Number(fit.senSlopeFtPerWeek);
+          const mk = Number(fit.mannKendallS);
+          const pValue = Number(fit.mannKendallPValue);
+          const pointCount = Number(fit.pointCount || 0);
+          const significantDecline = pointCount >= 4
+            && sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+            && mk > 0
+            && pValue <= TREND_SIGNIFICANCE_ALPHA;
+          return {
+            wardNo: ward.wardNo,
+            wardName: ward.wardName,
+            groundwaterStatus: significantDecline ? 'Watch' : 'Normal',
+            groundwaterDirection: significantDecline ? 'Possible decline' : pointCount >= 4 ? 'Mostly stable' : 'Not computed',
+            declineStrengthFtPerWeek: Number.isFinite(sen) ? sen : null,
+            linearSlopeFtPerWeek: Number.isFinite(Number(fit.slopeFtPerWeek)) ? Number(Number(fit.slopeFtPerWeek).toFixed(4)) : null,
+            senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
+            mannKendallS: Number.isFinite(mk) ? mk : null,
+            mannKendallPValue: Number.isFinite(pValue) ? pValue : null,
+            pointCount
+          };
+        });
+        return { wards: candidates };
+      };
     const indexedTrendFit = (values = [], times = []) => {
       const validTimes = times.map((time) => new Date(time).getTime());
       const firstTime = validTimes.find(Number.isFinite);
@@ -3013,6 +3078,7 @@
       const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
       const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
       const plottedTrend = plottedGroundwaterTrend(slopeFit);
+      const borewellSummary = borewellAgreementSummary(criticalGw);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
       const dropClass = Number(avgDrop) > 0 ? 'bad' : Number(avgDrop) < 0 ? 'good' : '';
       const hasWardWeeklyData = cleanWeeklyPoints.length >= 2;
@@ -3249,76 +3315,177 @@
           </section>
         </section>
         <section class="ward-tab-panel" data-ward-panel="groundwater">
-          <section class="ward-explain">
-          <h3>Ward Weekly Groundwater Trend</h3>
-          ${hasWardWeeklyData
-            ? `
-              <section class="ward-summary-grid compact slope-strip">
-                  ${wardMetric(
-                    'Ward-average Theil-Sen rate',
-                    formatTrend(
-                      slopeFit.senSlopeFtPerWeek,
-                      'ft/week',
-                      2
-                    ),
-                    slopeClass(slopeFit.senSlopeFtPerWeek)
-                  )}
+                  <section class="ward-explain">
+                    <h3>Ward-average Groundwater Trend</h3>
 
-                  ${wardMetric(
-                    'Ward-average linear slope',
-                    formatTrend(
-                      slopeFit.slopeFtPerWeek,
-                      'ft/week',
-                      2
-                    ),
-                    slopeClass(slopeFit.slopeFtPerWeek)
-                  )}
+                    ${hasWardWeeklyData
+                      ? `
+                        <section class="ward-summary-grid compact slope-strip">
+                          ${wardMetric(
+                            'Ward-average Theil-Sen rate',
+                            formatTrend(
+                              slopeFit.senSlopeFtPerWeek,
+                              'ft/week',
+                              2
+                            ),
+                            slopeClass(slopeFit.senSlopeFtPerWeek)
+                          )}
 
-                  ${wardMetric(
-                      'Linear R²',
-                      slopeFit.r2 == null
-                        ? '-'
-                        : formatNumber(slopeFit.r2, 3)
-                    )}
+                          ${wardMetric(
+                            'Ward-average linear slope',
+                            formatTrend(
+                              slopeFit.slopeFtPerWeek,
+                              'ft/week',
+                              2
+                            ),
+                            slopeClass(slopeFit.slopeFtPerWeek)
+                          )}
 
-                  ${wardMetric(
-                    'Mann-Kendall',
-                    slopeFit.mannKendallTrend || 'Not computed',
-                    slopeClass(slopeFit.mannKendallS)
-                  )}
+                          ${wardMetric(
+                            'Linear R²',
+                            slopeFit.r2 == null
+                              ? '-'
+                              : formatNumber(slopeFit.r2, 3)
+                          )}
 
-                  ${wardMetric(
-                    'MK p-value',
-                    slopeFit.mannKendallPValue == null
-                      ? '-'
-                      : formatNumber(
-                          slopeFit.mannKendallPValue,
-                          3
+                          ${wardMetric(
+                            'Mann-Kendall',
+                            slopeFit.mannKendallTrend || 'Not computed',
+                            slopeClass(slopeFit.mannKendallS)
+                          )}
+
+                          ${wardMetric(
+                            'MK p-value',
+                            slopeFit.mannKendallPValue == null
+                              ? '-'
+                              : formatNumber(
+                                  slopeFit.mannKendallPValue,
+                                  3
+                                )
+                          )}
+
+                          ${wardMetric(
+                            'Ward-average interpretation',
+                            plottedTrend.label,
+                            plottedTrend.className
+                          )}
+
+                          ${wardMetric(
+                            'Weekly points used',
+                            formatNumber(slopeFit.pointCount || 0)
+                          )}
+                        </section>
+
+                        <div class="ward-note">
+                          These statistics are calculated from the exact cleaned weekly
+                          ward-average values shown in the graph. Positive depth slope means
+                          groundwater is becoming deeper and indicates decline. Negative depth
+                          slope means groundwater is becoming shallower and indicates a rise.
+                        </div>
+
+                        <div class="mini-chart-wrap large">
+                          <button
+                            class="mini-chart-expand chart-expand"
+                            data-chart-id="wardWeeklyChart"
+                            data-chart-title="Ward-average Groundwater Trend"
+                            type="button"
+                          >
+                            Expand
+                          </button>
+                          <canvas id="wardWeeklyChart"></canvas>
+                        </div>
+
+                        ${weeklyOutlierNote}
+                      `
+                      : `
+                        <div class="ward-note">
+                          Not enough valid weekly groundwater levels to calculate the
+                          ward-average trend. Zero readings and isolated spikes are removed
+                          before analysis.
+                        </div>
+                      `
+                    }
+                  </section>
+
+                  <section class="ward-explain">
+                    <h3>Individual Borewell Evidence</h3>
+
+                    <p>
+                      The map classification is based on trends calculated separately for
+                      individual borewells. It may differ from the ward-average graph when
+                      borewells behave differently.
+                    </p>
+
+                    <section class="ward-summary-grid compact">
+                      ${wardMetric(
+                        'Classifiable borewells',
+                        formatNumber(borewellSummary.classifiedCount)
+                      )}
+
+                      ${wardMetric(
+                        'Confirmed declining borewells',
+                        `${formatNumber(
+                          borewellSummary.confirmedDecliningCount
+                        )} of ${formatNumber(
+                          borewellSummary.classifiedCount
+                        )}`,
+                        borewellSummary.confirmedDecliningCount > 0
+                          ? 'bad'
+                          : ''
+                      )}
+
+                      ${wardMetric(
+                        'Confirmed declining percentage',
+                        borewellSummary.decliningPercent == null
+                          ? '-'
+                          : `${formatNumber(
+                              borewellSummary.decliningPercent,
+                              1
+                            )}%`,
+                        borewellSummary.decliningPercent >= 50
+                          ? 'bad'
+                          : ''
+                      )}
+
+                      ${wardMetric(
+                        'Median individual-borewell Theil-Sen',
+                        borewellSummary.medianSensorSlope == null
+                          ? '-'
+                          : formatTrend(
+                              borewellSummary.medianSensorSlope,
+                              'ft/week',
+                              2
+                            ),
+                        slopeClass(
+                          borewellSummary.medianSensorSlope
                         )
-                  )}
+                      )}
 
-                  ${wardMetric(
-                    'Plotted Trend Interpretation',
-                    plottedTrend.label,
-                    plottedTrend.className
-                  )}
+                      ${wardMetric(
+                        'Borewell agreement interpretation',
+                        borewellSummary.label,
+                        borewellSummary.className
+                      )}
 
-                  ${wardMetric(
-                    'Points used',
-                    formatNumber(slopeFit.pointCount || 0)
-                  )}
-
-                  ${criticalGw
-                    ? wardMetric(
-                        'Map Screening Category',
-                        wardMapCategory(criticalGw),
+                      ${wardMetric(
+                        'Map screening category',
+                        criticalGw
+                          ? wardMapCategory(criticalGw)
+                          : 'Not available',
+                        criticalGw &&
                         wardMapCategory(criticalGw) !==
                           'Not current groundwater action'
                           ? 'bad'
                           : ''
-                      )
-                    : ''
-                  }
+                      )}
+                    </section>
+
+                    <div class="ward-note">
+                      The map status is not calculated from the ward-average graph. It uses
+                      agreement among individual borewell trends so that decline in several
+                      borewells is not hidden by averaging.
+                    </div>
+                  </section>
                 </section>
                 <div class="ward-note">
                   The Theil-Sen rate, linear slope, linear R², Mann-Kendall result, p-value,
