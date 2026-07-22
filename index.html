@@ -3487,22 +3487,6 @@
                     </div>
                   </section>
                 </section>
-                <div class="ward-note">
-                  The Theil-Sen rate, linear slope, linear R², Mann-Kendall result, p-value,
-                  and plotted interpretation above are all calculated from the same cleaned
-                  weekly ward-average values shown in this graph. Positive depth slope means
-                  groundwater is becoming deeper and indicates decline. Negative depth slope
-                  means groundwater is becoming shallower and indicates a possible rise. The
-                  map screening category is a separate backend classification and is shown only
-                  as the map status, not as a second graph slope.
-                </div>
-
-              <div class="mini-chart-wrap large"><button class="mini-chart-expand chart-expand" data-chart-id="wardWeeklyChart" data-chart-title="Ward Weekly Groundwater Trend with Slope" type="button">Expand</button><canvas id="wardWeeklyChart"></canvas></div>
-              ${weeklyOutlierNote}
-            `
-            : '<div class="ward-note">Not enough valid weekly groundwater levels to plot. Zero readings and isolated spikes are removed before charting.</div>'}
-          </section>
-        </section>
         <section class="ward-tab-panel" data-ward-panel="uids">
           <section class="ward-explain">
             <h3>GOOD Sensor UIDs</h3>
