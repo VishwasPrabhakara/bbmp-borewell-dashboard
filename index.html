@@ -210,6 +210,7 @@
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
     let wardStatusFilter = '';
+    let latestWardStatusCounts = { critical: 0, warning: 0, unverified: 0 };
     let sensors = [];
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
@@ -895,10 +896,16 @@
         warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
         unverified: wards.filter((ward) => wardStatusKey(ward) === 'unverified').length
       };
+      latestWardStatusCounts = counts;
+      if (counts.warning === 0 && wardStatusFilter === 'warning') {
+        wardStatusFilter = '';
+        refreshWardPopups();
+        renderSensors();
+      }
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
-        <div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Warning: Possible Decline</span></div>
+        ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Warning: Possible Decline</span></div>` : ''}
         <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
       `;
     };
@@ -4406,8 +4413,8 @@
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
         <button class="legend-row" data-ward-filter="unverified" type="button"><span class="swatch" style="background:#4c1d95"></span>Unverified: Old Critical</button>
         <div class="legend-note">
-          Critical and warning categories are based on the cleaned
-          ward-average weekly groundwater trend.
+          Ward categories are based on the cleaned ward-average
+          weekly groundwater trend.
         </div>
       `;
       return div;
@@ -4419,6 +4426,9 @@
         button.classList.toggle('active', button.dataset.filter === legendFilter);
       });
       document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
+        if (button.dataset.wardFilter === 'warning') {
+          button.style.display = latestWardStatusCounts.warning > 0 ? '' : 'none';
+        }
         button.classList.toggle('active', button.dataset.wardFilter === wardStatusFilter);
       });
     };
@@ -4651,4 +4661,3 @@
   </script>
 </body>
 </html>
-
