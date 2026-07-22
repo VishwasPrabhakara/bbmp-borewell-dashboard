@@ -195,7 +195,7 @@
     let wardIndicatorsByNo = new Map();
     const bangaloreCenter = [12.9716, 77.5946];
     const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
-    const WARD_WEEKLY_API_VERSION = 'ww-20260717-1';
+    const WARD_WEEKLY_API_VERSION = 'ww-20260722-1';
     const SPECIFIC_CAPACITY_API_VERSION = 'sc-20260717-2';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -370,33 +370,86 @@
       const raw = Number(rawValue);
       return Number.isFinite(raw) ? raw * 1000000 : null;
     };
+    const isGroundwaterCriticalWard = (critical) => (
+      critical?.groundwaterStatus === 'Critical'
+      || critical?.dashboardMapCategory ===
+        'Critical: Ward-average groundwater decline'
+    );
+
+    const isGroundwaterWatchWard = (critical) => (
+      critical?.groundwaterStatus === 'Watch'
+      || critical?.dashboardMapCategory ===
+        'Warning: Possible ward-average decline'
+    );
+
     const isGroundwaterActionWard = (critical) => (
-      critical?.dashboardAction === 'Yes'
-      || critical?.groundwaterStatus === 'Critical'
-      || critical?.groundwaterStatus === 'Watch'
+      isGroundwaterCriticalWard(critical)
+      || isGroundwaterWatchWard(critical)
     );
-    const isLinearMannKendallScreeningWard = (critical) => (
-      !isGroundwaterActionWard(critical)
-      && critical?.linearMannKendallCritical === 'Yes'
-    );
+
+    const isLinearMannKendallScreeningWard = () => false;
+
     const isOldCriticalNoGroundwaterWard = (critical) => (
       critical?.oldConsumptionNoGroundwaterData === 'Yes'
     );
+
     const wardStatusKey = (critical) => {
-      if (isGroundwaterActionWard(critical)) return 'critical';
-      if (isLinearMannKendallScreeningWard(critical)) return 'warning';
+      if (isGroundwaterCriticalWard(critical)) return 'critical';
+      if (isGroundwaterWatchWard(critical)) return 'warning';
       if (isOldCriticalNoGroundwaterWard(critical)) return 'unverified';
       return '';
     };
-    const wardMapCategory = (critical) => (
-      isGroundwaterActionWard(critical)
-        ? 'Critical: Groundwater Decline'
-        : isLinearMannKendallScreeningWard(critical)
-          ? 'Warning: Possible Decline'
-          : isOldCriticalNoGroundwaterWard(critical)
-            ? 'Unverified: Old Critical Ward'
-            : 'Not current groundwater action'
-    );
+
+    const wardMapCategory = (critical) => {
+      if (!critical) return 'Not available';
+
+      if (isGroundwaterCriticalWard(critical)) {
+        return 'Critical: Groundwater Decline';
+      }
+
+      if (isGroundwaterWatchWard(critical)) {
+        return 'Warning: Possible Decline';
+      }
+
+      if (
+        critical.dashboardMapCategory ===
+        'Confirmed groundwater rise'
+        || critical.groundwaterDirection === 'Improving'
+      ) {
+        return 'Confirmed Groundwater Rise';
+      }
+
+      if (
+        critical.dashboardMapCategory ===
+        'Possible groundwater rise'
+        || critical.groundwaterDirection ===
+          'Possible improvement'
+      ) {
+        return 'Possible Groundwater Rise';
+      }
+
+      if (
+        critical.dashboardMapCategory ===
+        'Insufficient groundwater data'
+        || critical.groundwaterStatus ===
+          'Insufficient data'
+      ) {
+        return 'Insufficient Groundwater Data';
+      }
+
+      if (
+        critical.dashboardMapCategory ===
+        'Stable / mixed groundwater trend'
+      ) {
+        return 'Stable / Mixed Groundwater Trend';
+      }
+
+      if (isOldCriticalNoGroundwaterWard(critical)) {
+        return 'Unverified: Old Critical Ward';
+      }
+
+      return 'Stable / Mixed Groundwater Trend';
+    };
     const hasValidSpecificCapacity = (capacity) => (
       Boolean(capacity)
       && Number(capacity.validSessions || 0) > 0
@@ -406,50 +459,141 @@
     const formatTrend = (value, unit, decimals = 2) => value == null ? '-' : `${formatNumber(value, decimals)} ${unit}`;
     const formatScore = (value) => value == null ? '-' : `${formatNumber(value, 1)} / 100`;
     const criticalReasonHtml = (critical) => {
-      if (!critical || wardMapCategory(critical) === 'Not current groundwater action') return '';
-      const classified = formatNumber(critical.classifiedSensorCount || 0);
-      const declining = formatNumber(critical.confirmedDecliningSensorCount || 0);
+      if (!critical) return '';
+
       const category = wardMapCategory(critical);
+
+      const visibleCategories = [
+        'Critical: Groundwater Decline',
+        'Warning: Possible Decline',
+        'Unverified: Old Critical Ward'
+      ];
+
+      if (!visibleCategories.includes(category)) return '';
+
+      if (category === 'Unverified: Old Critical Ward') {
+        return `
+          <div class="critical-reason unverified">
+            <strong>Why this ward is marked on the map</strong>
+            <p>
+              This ward was in the previous consumption-based critical list,
+              but sufficient current groundwater-level evidence is not
+              available. It is therefore shown separately as unverified.
+            </p>
+          </div>
+        `;
+      }
+
+      const senSlope = formatTrend(
+        critical.senSlopeFtPerWeek,
+        'ft/week',
+        2
+      );
+
+      const linearSlope = formatTrend(
+        critical.linearSlopeFtPerWeek,
+        'ft/week',
+        2
+      );
+
+      const pValue =
+        critical.mannKendallPValue == null
+          ? '-'
+          : formatNumber(
+              critical.mannKendallPValue,
+              4
+            );
+
+      const points = formatNumber(
+        critical.pointCount || 0
+      );
+
       return `
-        <div class="critical-reason ${category.startsWith('Warning') ? 'screening' : category.startsWith('Unverified') ? 'unverified' : ''}">
+        <div class="critical-reason ${
+          category.startsWith('Warning')
+            ? 'screening'
+            : ''
+        }">
           <strong>Why this ward is marked on the map</strong>
-          <p>${category === 'Critical: Groundwater Decline'
-            ? 'The backend ward-screening method found sufficient groundwater-decline evidence for priority review.'
-            : category === 'Warning: Possible Decline'
-              ? 'The backend screening method found a possible decline signal, but the evidence is weaker than the critical group.'
-              : 'This ward was in the old consumption-critical list, but current groundwater sensor data is not available, so it remains unverified.'}</p>
-          ${category.startsWith('Unverified') ? '' : `
-            <ul>
-              <li>${declining} of ${classified} classifiable borewells independently show confirmed decline.</li>
-              <li>The graph below calculates its own ward-average Theil-Sen, linear slope, Mann-Kendall result, and p-value from the exact weekly values displayed.</li>
-            </ul>
-          `}
+
+          <p>
+            The map category is determined from the cleaned
+            ward-average weekly groundwater-level trend.
+          </p>
+
+          <ul>
+            <li>Ward-average Theil-Sen slope: ${senSlope}.</li>
+            <li>Ward-average linear slope: ${linearSlope}.</li>
+            <li>Mann-Kendall p-value: ${pValue}.</li>
+            <li>Weekly ward-average points used: ${points}.</li>
+          </ul>
+
+          <p>
+            Positive depth slope means groundwater is becoming deeper
+            and indicates decline. Individual borewell trends are shown
+            separately as supporting evidence.
+          </p>
         </div>
       `;
     };
     const wardCategoryCardHtml = (critical) => {
-      const category = wardMapCategory(critical);
-      if (category === 'Not current groundwater action') {
-        return `
-          <section class="ward-category-card neutral">
-            <strong>Normal / Not Currently Flagged</strong>
-            <p>This ward is not in the current groundwater decline category based on the latest cleaned trend indicators available in the dashboard.</p>
-          </section>
-        `;
-      }
-      const className = category.startsWith('Critical') ? 'critical' : category.startsWith('Warning') ? 'warning' : 'unverified';
-      const explanation = category.startsWith('Critical')
-        ? 'Priority groundwater decline ward. Cleaned weekly levels show stronger decline evidence and this ward should be reviewed first.'
-        : category.startsWith('Warning')
-          ? 'Possible decline ward. The sensitive trend screen is raising a signal, but the evidence is weaker than the critical group.'
-          : 'Previously consumption-critical ward without enough current groundwater sensor evidence, so it is kept visible separately instead of being treated as safe.';
-      return `
-        <section class="ward-category-card ${className}">
-          <strong>${htmlEscape(category)}</strong>
-          <p>${explanation}</p>
-        </section>
-      `;
-    };
+  const category = wardMapCategory(critical);
+
+  const categoryConfig = {
+    'Critical: Groundwater Decline': {
+      className: 'critical',
+      explanation:
+        'The cleaned ward-average weekly groundwater series shows a statistically significant decline.'
+    },
+
+    'Warning: Possible Decline': {
+      className: 'warning',
+      explanation:
+        'The cleaned ward-average weekly groundwater series shows a declining direction, but the statistical confidence is weaker.'
+    },
+
+    'Confirmed Groundwater Rise': {
+      className: 'neutral',
+      explanation:
+        'The cleaned ward-average weekly groundwater series shows a statistically significant rise. Groundwater depth below the surface is decreasing.'
+    },
+
+    'Possible Groundwater Rise': {
+      className: 'neutral',
+      explanation:
+        'The cleaned ward-average weekly groundwater series indicates a possible rise, but the trend is not statistically significant.'
+    },
+
+    'Stable / Mixed Groundwater Trend': {
+      className: 'neutral',
+      explanation:
+        'The cleaned ward-average groundwater indicators are stable or do not agree strongly enough to classify a clear rise or decline.'
+    },
+
+    'Insufficient Groundwater Data': {
+      className: 'neutral',
+      explanation:
+        'There are not enough valid cleaned weekly ward-average groundwater values to calculate a reliable trend.'
+    },
+
+    'Unverified: Old Critical Ward': {
+      className: 'unverified',
+      explanation:
+        'This ward was previously consumption-critical, but sufficient current groundwater-level evidence is unavailable.'
+    }
+  };
+
+  const config =
+    categoryConfig[category] ||
+    categoryConfig['Stable / Mixed Groundwater Trend'];
+
+  return `
+    <section class="ward-category-card ${config.className}">
+      <strong>${htmlEscape(category)}</strong>
+      <p>${config.explanation}</p>
+    </section>
+  `;
+};
     const formatDateTime = (value) => {
       if (!value) return '-';
       const date = new Date(value);
@@ -2751,32 +2895,127 @@
           className
         };
       };
-      const buildLocalCriticalGroundwater = (wardWeeklyPayload = { wards: [] }) => {
-        const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
-          const fit = weeklySlopeFit(ward.weekly || []);
-          const sen = Number(fit.senSlopeFtPerWeek);
-          const mk = Number(fit.mannKendallS);
-          const pValue = Number(fit.mannKendallPValue);
-          const pointCount = Number(fit.pointCount || 0);
-          const significantDecline = pointCount >= 4
-            && sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
-            && mk > 0
-            && pValue <= TREND_SIGNIFICANCE_ALPHA;
-          return {
-            wardNo: ward.wardNo,
-            wardName: ward.wardName,
-            groundwaterStatus: significantDecline ? 'Watch' : 'Normal',
-            groundwaterDirection: significantDecline ? 'Possible decline' : pointCount >= 4 ? 'Mostly stable' : 'Not computed',
-            declineStrengthFtPerWeek: Number.isFinite(sen) ? sen : null,
-            linearSlopeFtPerWeek: Number.isFinite(Number(fit.slopeFtPerWeek)) ? Number(Number(fit.slopeFtPerWeek).toFixed(4)) : null,
-            senSlopeFtPerWeek: Number.isFinite(sen) ? Number(sen.toFixed(4)) : null,
-            mannKendallS: Number.isFinite(mk) ? mk : null,
-            mannKendallPValue: Number.isFinite(pValue) ? pValue : null,
-            pointCount
-          };
-        });
-        return { wards: candidates };
-      };
+     const buildLocalCriticalGroundwater = (
+  wardWeeklyPayload = { wards: [] }
+) => {
+  const candidates = (wardWeeklyPayload.wards || []).map((ward) => {
+    const fit = weeklySlopeFit(ward.weekly || []);
+
+    const sen = Number(fit.senSlopeFtPerWeek);
+    const linear = Number(fit.slopeFtPerWeek);
+    const mk = Number(fit.mannKendallS);
+    const pValue = Number(fit.mannKendallPValue);
+    const pointCount = Number(fit.pointCount || 0);
+
+    const enoughData =
+      pointCount >= 8 &&
+      Number.isFinite(sen) &&
+      Number.isFinite(linear) &&
+      Number.isFinite(mk) &&
+      Number.isFinite(pValue);
+
+    const senDecline =
+      sen > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+    const linearDecline =
+      linear > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+    const senRise =
+      sen < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+    const linearRise =
+      linear < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+
+    const significant =
+      pValue <= TREND_SIGNIFICANCE_ALPHA;
+
+    let groundwaterStatus = 'Normal';
+    let groundwaterDirection = 'Stable / mixed';
+    let dashboardMapCategory =
+      'Stable / mixed groundwater trend';
+    let dashboardAction = 'No';
+
+    if (!enoughData) {
+      groundwaterStatus = 'Insufficient data';
+      groundwaterDirection = 'Not computed';
+      dashboardMapCategory =
+        'Insufficient groundwater data';
+    } else if (
+      senDecline &&
+      linearDecline &&
+      mk > 0 &&
+      significant
+    ) {
+      groundwaterStatus = 'Critical';
+      groundwaterDirection = 'Declining';
+      dashboardMapCategory =
+        'Critical: Ward-average groundwater decline';
+      dashboardAction = 'Yes';
+    } else if (
+      senDecline &&
+      linearDecline &&
+      mk > 0
+    ) {
+      groundwaterStatus = 'Watch';
+      groundwaterDirection = 'Possible decline';
+      dashboardMapCategory =
+        'Warning: Possible ward-average decline';
+      dashboardAction = 'Yes';
+    } else if (
+      senRise &&
+      linearRise &&
+      mk < 0 &&
+      significant
+    ) {
+      groundwaterDirection = 'Improving';
+      dashboardMapCategory =
+        'Confirmed groundwater rise';
+    } else if (
+      senRise &&
+      linearRise &&
+      mk < 0
+    ) {
+      groundwaterDirection =
+        'Possible improvement';
+      dashboardMapCategory =
+        'Possible groundwater rise';
+    }
+
+    return {
+      wardNo: ward.wardNo,
+      wardName: ward.wardName,
+      groundwaterStatus,
+      groundwaterDirection,
+      dashboardAction,
+      dashboardMapCategory,
+
+      declineStrengthFtPerWeek:
+        Number.isFinite(sen) ? sen : null,
+
+      linearSlopeFtPerWeek:
+        Number.isFinite(linear)
+          ? Number(linear.toFixed(4))
+          : null,
+
+      senSlopeFtPerWeek:
+        Number.isFinite(sen)
+          ? Number(sen.toFixed(4))
+          : null,
+
+      mannKendallS:
+        Number.isFinite(mk) ? mk : null,
+
+      mannKendallPValue:
+        Number.isFinite(pValue)
+          ? pValue
+          : null,
+
+      pointCount
+    };
+  });
+
+  return { wards: candidates };
+};
     const indexedTrendFit = (values = [], times = []) => {
       const validTimes = times.map((time) => new Date(time).getTime());
       const firstTime = validTimes.find(Number.isFinite);
@@ -3411,9 +3650,9 @@
                     <h3>Individual Borewell Evidence</h3>
 
                     <p>
-                      The map classification is based on trends calculated separately for
-                      individual borewells. It may differ from the ward-average graph when
-                      borewells behave differently.
+                      Individual borewell trends are calculated separately as supporting
+                      evidence. They help identify localized decline or improvement, but
+                      they do not determine or override the final ward classification.
                     </p>
 
                     <section class="ward-summary-grid compact">
@@ -3462,29 +3701,29 @@
                       )}
 
                       ${wardMetric(
-                        'Borewell agreement interpretation',
+                        'Supporting borewell interpretation',
                         borewellSummary.label,
                         borewellSummary.className
                       )}
 
                       ${wardMetric(
-                        'Map screening category',
+                        'Final ward groundwater category',
                         criticalGw
                           ? wardMapCategory(criticalGw)
                           : 'Not available',
                         criticalGw &&
-                        wardMapCategory(criticalGw) !==
-                          'Not current groundwater action'
+                        wardStatusKey(criticalGw)
                           ? 'bad'
                           : ''
                       )}
                     </section>
 
-                    <div class="ward-note">
-                      The map status is not calculated from the ward-average graph. It uses
-                      agreement among individual borewell trends so that decline in several
-                      borewells is not hidden by averaging.
-                    </div>
+                   <div class="ward-note">
+                    The final map status is calculated from the cleaned ward-average
+                    weekly groundwater trend shown above. Individual borewell trends are
+                    retained as supporting evidence for identifying localized decline or
+                    improvement, but they do not override the ward-average classification.
+                  </div>
                   </section>
                 </section>
         <section class="ward-tab-panel" data-ward-panel="uids">
@@ -4176,7 +4415,10 @@
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Warning: Possible Decline</button>
         <button class="legend-row" data-ward-filter="unverified" type="button"><span class="swatch" style="background:#4c1d95"></span>Unverified: Old Critical</button>
-        <div class="legend-note">Dark ward boundaries remain visible under status fills.</div>
+        <div class="legend-note">
+          Critical and warning categories are based on the cleaned
+          ward-average weekly groundwater trend.
+        </div>
       `;
       return div;
     };
