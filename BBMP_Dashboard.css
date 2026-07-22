@@ -77,27 +77,39 @@
     }
 
     .critical-ward-selected .details {
-      background: #fff5f5;
-      border-left-color: #ef9a9a;
+      background: #7f1d1d;
+      border-left-color: #450a0a;
     }
 
     .critical-ward-selected .details header {
-      background: #fff1f1;
-      border-bottom-color: #efb0b0;
+      background: #7f1d1d;
+      border-bottom-color: #991b1b;
+      color: #fff;
     }
 
     .critical-ward-selected .details-body {
-      background: #fff7f7;
+      background: #fff1f2;
+    }
+
+    .critical-ward-selected .details header .subhead {
+      color: #fee2e2;
+    }
+
+    .critical-ward-selected .details-close {
+      border-color: #fecaca;
+      color: #7f1d1d;
+      background: #fff;
     }
 
     .screening-ward-selected .details {
-      background: #fff7ed;
-      border-left-color: #fdba74;
+      background: #c2410c;
+      border-left-color: #7c2d12;
     }
 
     .screening-ward-selected .details header {
-      background: #ffedd5;
-      border-bottom-color: #fed7aa;
+      background: #c2410c;
+      border-bottom-color: #ea580c;
+      color: #fff;
     }
 
     .screening-ward-selected .details-body {
@@ -105,17 +117,35 @@
     }
 
     .unverified-ward-selected .details {
-      background: #f5f3ff;
-      border-left-color: #c4b5fd;
+      background: #4c1d95;
+      border-left-color: #2e1065;
     }
 
     .unverified-ward-selected .details header {
-      background: #ede9fe;
-      border-bottom-color: #ddd6fe;
+      background: #4c1d95;
+      border-bottom-color: #6d28d9;
+      color: #fff;
     }
 
     .unverified-ward-selected .details-body {
       background: #f5f3ff;
+    }
+
+    .screening-ward-selected .details header .subhead,
+    .unverified-ward-selected .details header .subhead {
+      color: #ffedd5;
+    }
+
+    .screening-ward-selected .details-close {
+      border-color: #fed7aa;
+      color: #9a3412;
+      background: #fff;
+    }
+
+    .unverified-ward-selected .details-close {
+      border-color: #ddd6fe;
+      color: #4c1d95;
+      background: #fff;
     }
 
     .details-title-row {

@@ -506,7 +506,7 @@
             );
 
       const points = formatNumber(
-        critical.pointCount || 0
+        critical.pointCount ?? critical.usableWeeklyValues ?? 0
       );
 
       return `
@@ -1707,11 +1707,10 @@
         sharedPromise
       ]).then(async ([wardQcPayload, indicatorsPayload, wardWeeklyPayload, criticalApiPayload, shared]) => {
         if (sequence !== loadSequence) return;
-        const criticalGroundwaterPayload = currentDataSource === 'kh' && (criticalApiPayload?.wards || []).length
-          ? criticalApiPayload
-          : currentDataSource === 'kh'
-            ? buildLocalCriticalGroundwater(wardWeeklyPayload)
-            : { wards: [] };
+        const criticalGroundwaterPayload = mergeCriticalGroundwaterWithWeekly(
+          wardWeeklyPayload,
+          criticalApiPayload
+        );
         const loaded = {
           payload,
           qcPayload,
@@ -2736,29 +2735,10 @@
 
         const pointCount = Number(fit?.pointCount || 0);
 
-        const hasSenSlope =
-          rawSenSlope !== null &&
-          rawSenSlope !== undefined &&
-          Number.isFinite(Number(rawSenSlope));
-
         const hasLinearSlope =
           rawLinearSlope !== null &&
           rawLinearSlope !== undefined &&
           Number.isFinite(Number(rawLinearSlope));
-
-        if (
-          pointCount < 4 ||
-          !hasSenSlope ||
-          !hasLinearSlope
-        ) {
-          return {
-            label: 'Insufficient data',
-            className: ''
-          };
-        }
-
-        const senSlope = Number(rawSenSlope);
-        const linearSlope = Number(rawLinearSlope);
 
         const mannKendallS =
           rawMannKendallS !== null &&
@@ -2774,14 +2754,22 @@
             ? Number(rawPValue)
             : null;
 
-        const senDeclining =
-          senSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+        if (
+          pointCount < 8 ||
+          !hasLinearSlope ||
+          mannKendallS === null ||
+          pValue === null
+        ) {
+          return {
+            label: 'Insufficient data',
+            className: ''
+          };
+        }
+
+        const linearSlope = Number(rawLinearSlope);
 
         const linearDeclining =
           linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
-
-        const senImproving =
-          senSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
 
         const linearImproving =
           linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
@@ -2791,9 +2779,7 @@
           pValue <= TREND_SIGNIFICANCE_ALPHA;
 
         if (
-          senDeclining &&
           linearDeclining &&
-          mannKendallS !== null &&
           mannKendallS > 0
         ) {
           return {
@@ -2805,9 +2791,7 @@
         }
 
         if (
-          senImproving &&
           linearImproving &&
-          mannKendallS !== null &&
           mannKendallS < 0
         ) {
           return {
@@ -2818,16 +2802,16 @@
           };
         }
 
-        if (senDeclining || linearDeclining) {
+        if (linearDeclining) {
           return {
-            label: 'Mixed indicators — possible decline',
+            label: 'Linear trend indicates possible decline',
             className: 'bad'
           };
         }
 
-        if (senImproving || linearImproving) {
+        if (linearImproving) {
           return {
-            label: 'Mixed indicators — possible rise',
+            label: 'Linear trend indicates possible rise',
             className: 'good'
           };
         }
@@ -3013,6 +2997,65 @@
 
   return { wards: candidates };
 };
+    const mergeCriticalGroundwaterWithWeekly = (
+      wardWeeklyPayload = { wards: [] },
+      criticalApiPayload = { wards: [] }
+    ) => {
+      if (currentDataSource !== 'kh') return { wards: [] };
+
+      const localPayload = buildLocalCriticalGroundwater(wardWeeklyPayload);
+      const apiByWard = new Map((criticalApiPayload?.wards || []).map((item) => [
+        normalizeWardNo(item.wardNo),
+        item
+      ]));
+      const localWardNos = new Set();
+
+      const wards = (localPayload.wards || []).map((localRow) => {
+        const wardNo = normalizeWardNo(localRow.wardNo);
+        localWardNos.add(wardNo);
+        const apiRow = apiByWard.get(wardNo) || {};
+        const linearSlope = Number(localRow.linearSlopeFtPerWeek);
+        const pValue = Number(localRow.mannKendallPValue);
+        const pointCount = Number(localRow.pointCount || 0);
+        const reason = localRow.groundwaterStatus === 'Critical'
+          ? `Critical groundwater decline: the plotted cleaned ward-average weekly graph has a linear slope of ${formatNumber(linearSlope, 2)} ft/week and Mann-Kendall p-value ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
+          : localRow.groundwaterStatus === 'Watch'
+          ? `Possible groundwater decline: the plotted cleaned ward-average weekly graph has a positive linear slope, but Mann-Kendall is not statistically significant.`
+          : localRow.groundwaterDirection === 'Improving'
+          ? `Confirmed groundwater rise: the plotted cleaned ward-average weekly graph has a negative linear slope and statistically significant Mann-Kendall trend.`
+          : localRow.groundwaterDirection === 'Possible improvement'
+          ? `Possible groundwater rise: the plotted cleaned ward-average weekly graph has a negative linear slope, but Mann-Kendall is not statistically significant.`
+          : localRow.groundwaterStatus === 'Insufficient data'
+          ? `Not enough plotted cleaned weekly ward-average points are available. Points used: ${formatNumber(pointCount)}.`
+          : `Stable or mixed groundwater trend: the plotted cleaned ward-average weekly graph does not show confirmed decline.`;
+
+        return {
+          ...apiRow,
+          ...localRow,
+          previousCriticalWard: apiRow.previousCriticalWard || localRow.previousCriticalWard || 'No',
+          previousCriticalWardName: apiRow.previousCriticalWardName || localRow.previousCriticalWardName || '',
+          oldConsumptionNoGroundwaterData: apiRow.oldConsumptionNoGroundwaterData === 'Yes' && localRow.groundwaterStatus === 'Insufficient data' ? 'Yes' : 'No',
+          classifiedSensorCount: apiRow.classifiedSensorCount ?? localRow.classifiedSensorCount,
+          decliningSensorCount: apiRow.decliningSensorCount ?? localRow.decliningSensorCount,
+          confirmedDecliningSensorCount: apiRow.confirmedDecliningSensorCount ?? localRow.confirmedDecliningSensorCount,
+          improvingSensorCount: apiRow.improvingSensorCount ?? localRow.improvingSensorCount,
+          decliningSensorPercent: apiRow.decliningSensorPercent ?? localRow.decliningSensorPercent,
+          confirmedDecliningSensorPercent: apiRow.confirmedDecliningSensorPercent ?? localRow.confirmedDecliningSensorPercent,
+          medianSensorTheilSenSlopeFtPerWeek: apiRow.medianSensorTheilSenSlopeFtPerWeek ?? localRow.medianSensorTheilSenSlopeFtPerWeek,
+          usableWeeklyValues: pointCount,
+          updateReason: `${reason} Individual borewell trends are supporting evidence and do not override this ward-average classification.`
+        };
+      });
+
+      for (const apiRow of criticalApiPayload?.wards || []) {
+        const wardNo = normalizeWardNo(apiRow.wardNo);
+        if (!localWardNos.has(wardNo) && apiRow.oldConsumptionNoGroundwaterData === 'Yes') {
+          wards.push(apiRow);
+        }
+      }
+
+      return { ...criticalApiPayload, wards };
+    };
     const indexedTrendFit = (values = [], times = []) => {
       const validTimes = times.map((time) => new Date(time).getTime());
       const firstTime = validTimes.find(Number.isFinite);
