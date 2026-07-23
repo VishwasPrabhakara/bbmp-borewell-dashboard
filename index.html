@@ -3815,7 +3815,7 @@
           <div class="analysis-hint">
             <span>Specific capacity up = improving</span>
             <span>Inverse specific capacity up = worsening</span>
-            <span>Time trend uses a straight Theil-Sen line when enough data exists; curves are only for discharge diagnostic plots.</span>
+            <span>Time trend is fitted from the data, not manually drawn. R2 is used to judge how well a straight trend represents the points; Jacob curves are shown only for discharge diagnostic plots.</span>
           </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
             <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
@@ -4812,22 +4812,13 @@
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#15803d"></span>Groundwater Rise</button>
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Groundwater Decline Review</button>
-        <div class="legend-title legend-title-spaced">Ward graph level</div>
-        <div class="level-toggle map-level-toggle" role="group" aria-label="Ward graph level">
-          <button type="button" class="active" data-global-ward-level-stat="average">Average</button>
-          <button type="button" data-global-ward-level-stat="median">Median</button>
-        </div>
         <div class="legend-note">
-          Red and green fills show final mapped groundwater status. Average/Median changes the ward trend graph values.
+          Red and green fills show final mapped groundwater status. Use the Average/Median buttons inside the ward groundwater graph to change plotted values.
         </div>
       `;
       return div;
     };
     legend.addTo(map);
-    document.querySelectorAll('[data-global-ward-level-stat]').forEach((button) => {
-      button.addEventListener('click', () => setWardLevelStatistic(button.dataset.globalWardLevelStat));
-    });
-    refreshWardLevelToggleButtons();
 
     const updateLegendFilterUi = () => {
       document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
