@@ -242,6 +242,9 @@
     let wardInlineCharts = [];
     let activeWardData = null;
     let activeSpecificCapacityData = null;
+    let activeWardProps = null;
+    let activeWardSensors = [];
+    let wardLevelStatistic = 'average';
     let fullscreenChart = null;
     let fullscreenSource = null;
     let selectionSequence = 0;
@@ -391,6 +394,12 @@
       critical?.oldConsumptionNoGroundwaterData === 'Yes'
     );
 
+    const criticalForWardNo = (wardNo) => {
+      const normalizedWardNo = normalizeWardNo(wardNo);
+      const base = criticalGroundwaterByNo.get(normalizedWardNo);
+      return deriveCriticalForWardStatistic(normalizedWardNo, base);
+    };
+
     const wardStatusKey = (critical) => {
       if (isGroundwaterCriticalWard(critical)) return 'critical';
       if (isGroundwaterWatchWard(critical)) return 'warning';
@@ -501,6 +510,7 @@
       const points = formatNumber(
         critical.pointCount ?? critical.usableWeeklyValues ?? 0
       );
+      const levelConfig = wardLevelStatisticConfig();
 
       return `
         <div class="critical-reason ${
@@ -512,14 +522,14 @@
 
           <p>
             The map category is determined from the cleaned
-            ward-average weekly groundwater-level trend.
+            ${levelConfig.noteLabel} weekly groundwater-level trend.
           </p>
 
           <ul>
-            <li>Ward-average Theil-Sen slope: ${senSlope}.</li>
-            <li>Ward-average linear slope: ${linearSlope}.</li>
+            <li>${levelConfig.metricPrefix} Theil-Sen slope: ${senSlope}.</li>
+            <li>${levelConfig.metricPrefix} linear slope: ${linearSlope}.</li>
             <li>Mann-Kendall p-value: ${pValue}.</li>
-            <li>Weekly ward-average points used: ${points}.</li>
+            <li>Weekly ${levelConfig.noteLabel} points used: ${points}.</li>
           </ul>
 
           <p>
@@ -532,36 +542,37 @@
     };
     const wardCategoryCardHtml = (critical) => {
   const category = wardMapCategory(critical);
+  const levelConfig = wardLevelStatisticConfig();
 
   const categoryConfig = {
     'Critical: Groundwater Decline': {
       className: 'critical',
       explanation:
-        'The cleaned ward-average weekly groundwater series shows a statistically significant decline.'
+        `The cleaned ${levelConfig.noteLabel} weekly groundwater series shows a statistically significant decline.`
     },
 
     'Confirmed Groundwater Rise': {
       className: 'neutral',
       explanation:
-        'The cleaned ward-average weekly groundwater series shows a statistically significant rise. Groundwater depth below the surface is decreasing.'
+        `The cleaned ${levelConfig.noteLabel} weekly groundwater series shows a statistically significant rise. Groundwater depth below the surface is decreasing.`
     },
 
     'Possible Groundwater Rise': {
       className: 'neutral',
       explanation:
-        'The cleaned ward-average weekly groundwater series indicates a possible rise, but the trend is not statistically significant.'
+        `The cleaned ${levelConfig.noteLabel} weekly groundwater series indicates a possible rise, but the trend is not statistically significant.`
     },
 
     'Stable / Mixed Groundwater Trend': {
       className: 'neutral',
       explanation:
-        'The cleaned ward-average groundwater indicators are stable or do not agree strongly enough to classify a clear rise or decline.'
+        `The cleaned ${levelConfig.noteLabel} groundwater indicators are stable or do not agree strongly enough to classify a clear rise or decline.`
     },
 
     'Insufficient Groundwater Data': {
       className: 'neutral',
       explanation:
-        'There are not enough valid cleaned weekly ward-average groundwater values to calculate a reliable trend.'
+        `There are not enough valid cleaned weekly ${levelConfig.noteLabel} groundwater values to calculate a reliable trend.`
     },
 
     'Unverified: Old Critical Ward': {
@@ -724,7 +735,7 @@
     });
     const wardStyle = (feature) => {
       const featureWardNo = normalizeWardNo(wardNumber(feature?.properties || {}));
-      const critical = criticalGroundwaterByNo.get(featureWardNo);
+      const critical = criticalForWardNo(featureWardNo);
       const key = wardStatusKey(critical);
       const isFocused = focusedWardNo && featureWardNo === focusedWardNo;
       const shouldDim = (focusedWardNo && !isFocused) || (wardStatusFilter && key !== wardStatusFilter);
@@ -797,6 +808,8 @@
       focusedWardNo = '';
       activeWardData = null;
       activeSpecificCapacityData = null;
+      activeWardProps = null;
+      activeWardSensors = [];
       waterPoints = [];
 
       updateClearSelectionButton();
@@ -848,7 +861,7 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const weekly = wardWeeklyForProps(props);
-      const criticalGw = criticalGroundwaterByNo.get(wardNumber(props));
+      const criticalGw = criticalForWardNo(wardNumber(props));
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(wardNumber(props)));
       const showCapacity = hasValidSpecificCapacity(capacity);
       return `
@@ -873,7 +886,14 @@
     };
 
     const renderMethodSummary = (payload) => {
-      const wards = Array.isArray(payload?.wards) ? payload.wards : [];
+      const sourceWards = Array.isArray(payload?.wards) ? payload.wards : [];
+      const wardNos = new Set([
+        ...sourceWards.map((ward) => normalizeWardNo(ward.wardNo)),
+        ...Array.from(wardWeeklyByNo.keys())
+      ].filter(Boolean));
+      const wards = Array.from(wardNos)
+        .map((wardNo) => criticalForWardNo(wardNo))
+        .filter(Boolean);
       if (!els.methodSummary || !wards.length || currentDataSource !== 'kh') {
         if (els.methodSummary) els.methodSummary.style.display = 'none';
         return;
@@ -902,7 +922,7 @@
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
         ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
         <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
-        <div class="method-note">Selected method controls the ward colours. The specific-capacity time graph uses a straight Theil-Sen trend line only when enough temporal data exists; curves are used only for discharge diagnostic plots.</div>
+        <div class="method-note">Selected method and selected ward level (${wardLevelStatisticConfig().levelLabel}) control the ward colours. The specific-capacity time graph uses a straight Theil-Sen trend line only when enough temporal data exists; curves are used only for discharge diagnostic plots.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -1000,7 +1020,7 @@
         const uidMatch = query && (uid === query || (query.length >= 5 && uid.includes(query)));
         const directMatch = !query || wardNumberMatch || wardNameMatch || uidMatch;
         const dataMatch = !legendFilter || sensor.dataCategory === legendFilter;
-        const wardStatusMatch = !wardStatusFilter || wardStatusKey(criticalGroundwaterByNo.get(normalizeWardNo(sensor.wardNo))) === wardStatusFilter;
+        const wardStatusMatch = !wardStatusFilter || wardStatusKey(criticalForWardNo(sensor.wardNo)) === wardStatusFilter;
         const qcMatch = !qcFilter || qcStatusForSensor(sensor) === qcFilter;
         return dataMatch && wardStatusMatch && qcMatch && directMatch;
       });
@@ -1088,6 +1108,8 @@
         focusedWardNo = '';
         activeWardData = null;
         activeSpecificCapacityData = null;
+        activeWardProps = null;
+        activeWardSensors = [];
         waterPoints = [];
 
         selectedRange = 'week';
@@ -2169,6 +2191,35 @@
       };
     };
     const cleanChartPoints = (rawPoints) => cleanChartPointGroups(rawPoints).cleaned;
+    const wardLevelStatisticConfig = () => (
+      wardLevelStatistic === 'median'
+        ? {
+          key: 'median',
+          title: 'Ward-median Groundwater Trend',
+          metricPrefix: 'Ward-median',
+          levelLabel: 'Median level',
+          noteLabel: 'ward-median',
+          emptyLabel: 'ward-median'
+        }
+        : {
+          key: 'average',
+          title: 'Ward-average Groundwater Trend',
+          metricPrefix: 'Ward-average',
+          levelLabel: 'Average level',
+          noteLabel: 'ward-average',
+          emptyLabel: 'ward-average'
+        }
+    );
+    const prepareWardWeeklyForStatistic = (weekly = [], statistic = wardLevelStatistic) => weekly.map((point) => {
+      const selected = statistic === 'median'
+        ? point.medianLevel ?? point.averageLevel
+        : point.averageLevel;
+      return {
+        ...point,
+        averageLevel: validChartLevel(selected) ? Number(selected) : null,
+        selectedLevelStatistic: statistic
+      };
+    });
     const cleanWeeklyGroundwater = (weekly = []) => {
       const normalized = weekly.map((point, index) => ({
         ...point,
@@ -2212,6 +2263,96 @@
         outliers: normalized.filter((point) => outlierIndexes.has(point._xIndex))
       };
     };
+
+    function deriveCriticalForWardStatistic(wardNo, base = null) {
+      const normalizedWardNo = normalizeWardNo(wardNo);
+      const ward = wardWeeklyByNo.get(normalizedWardNo);
+      if (!ward) return base;
+
+      const levelConfig = wardLevelStatisticConfig();
+      const selectedWeekly = prepareWardWeeklyForStatistic(ward.weekly || [], levelConfig.key);
+      const weeklyGroups = cleanWeeklyGroundwater(selectedWeekly);
+      const cleanWeekly = weeklyGroups.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
+      const fit = weeklySlopeFit(cleanWeekly);
+      const linearSlope = Number(fit.slopeFtPerWeek);
+      const theilSlope = Number(fit.senSlopeFtPerWeek);
+      const mk = Number(fit.mannKendallS);
+      const pValue = Number(fit.mannKendallPValue);
+      const pointCount = Number(fit.pointCount || 0);
+      const hasEnough = pointCount >= 8 && Number.isFinite(pValue) && Number.isFinite(mk);
+      const linearCritical = hasEnough
+        && Number.isFinite(linearSlope)
+        && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+        && mk > 0
+        && pValue <= TREND_SIGNIFICANCE_ALPHA;
+      const theilCritical = hasEnough
+        && Number.isFinite(theilSlope)
+        && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+        && mk > 0
+        && pValue <= TREND_SIGNIFICANCE_ALPHA;
+      const selectedCritical = groundwaterMethodMode === 'linear' ? linearCritical : theilCritical;
+      const selectedSlope = groundwaterMethodMode === 'linear' ? linearSlope : theilSlope;
+      const selectedMethodName = groundwaterMethodMode === 'linear'
+        ? 'linear slope + Mann-Kendall'
+        : 'Theil-Sen slope + Mann-Kendall';
+      const linearRise = Number.isFinite(linearSlope) && linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+      const significant = Number.isFinite(pValue) && pValue <= TREND_SIGNIFICANCE_ALPHA;
+      const improving = hasEnough && linearRise && mk < 0;
+      const insufficient = !hasEnough;
+      const oldUnverified = base?.oldConsumptionNoGroundwaterData === 'Yes' && insufficient;
+      const statLabel = levelConfig.noteLabel;
+      let groundwaterStatus = selectedCritical ? 'Critical' : insufficient ? 'Insufficient data' : 'Normal';
+      let groundwaterDirection = selectedCritical
+        ? 'Declining'
+        : improving
+        ? significant ? 'Improving' : 'Possible improvement'
+        : insufficient
+        ? 'Not computed'
+        : 'Stable / mixed';
+      let dashboardMapCategory = selectedCritical
+        ? `Critical: ${levelConfig.metricPrefix} groundwater decline`
+        : improving
+        ? significant ? 'Confirmed groundwater rise' : 'Possible groundwater rise'
+        : insufficient
+        ? 'Insufficient groundwater data'
+        : 'Stable / mixed groundwater trend';
+      if (oldUnverified) {
+        groundwaterStatus = 'Insufficient data';
+        groundwaterDirection = 'Not computed';
+        dashboardMapCategory = 'Insufficient groundwater data';
+      }
+      const reason = selectedCritical
+        ? `Critical groundwater decline: selected level is ${statLabel}; selected method is ${selectedMethodName}; slope is ${formatNumber(selectedSlope, 2)} ft/week and Mann-Kendall p-value is ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
+        : improving
+        ? `${significant ? 'Confirmed' : 'Possible'} groundwater rise: selected level is ${statLabel}; the cleaned weekly graph has a negative linear slope.`
+        : insufficient
+        ? `Not enough plotted cleaned weekly ${statLabel} points are available. Points used: ${formatNumber(pointCount)}.`
+        : `Stable or mixed groundwater trend: selected level is ${statLabel}; the cleaned weekly graph does not show confirmed decline.`;
+
+      return {
+        ...(base || {}),
+        wardNo: ward.wardNo,
+        wardName: ward.wardName,
+        groundwaterStatus,
+        groundwaterDirection,
+        dashboardAction: selectedCritical ? 'Yes' : 'No',
+        dashboardMapCategory,
+        linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
+        theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
+        linearMethodCritical: hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+        theilSenMethodCritical: hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+        mannKendallMethodCritical: hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No',
+        oldConsumptionNoGroundwaterData: oldUnverified ? 'Yes' : 'No',
+        declineStrengthFtPerWeek: Number.isFinite(selectedSlope) ? selectedSlope : null,
+        linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? Number(linearSlope.toFixed(4)) : null,
+        senSlopeFtPerWeek: Number.isFinite(theilSlope) ? Number(theilSlope.toFixed(4)) : null,
+        mannKendallS: Number.isFinite(mk) ? mk : null,
+        mannKendallPValue: Number.isFinite(pValue) ? pValue : null,
+        pointCount,
+        usableWeeklyValues: pointCount,
+        updateReason: `${reason} Individual borewell trends are supporting evidence and do not override this ward-level classification.`
+      };
+    }
 
     const renderCharts = () => {
       const pointGroups = cleanChartPointGroups(filteredPoints());
@@ -2442,6 +2583,8 @@
       focusedWardNo = '';
       activeWardData = null;
       activeSpecificCapacityData = null;
+      activeWardProps = null;
+      activeWardSensors = [];
       waterPoints = [];
 
       map.closePopup();
@@ -3414,8 +3557,10 @@
       const avgDrop = wardData?.avgDropPerDay;
       const medianDrop = wardData?.medianDropPerDay;
       const maxDrop = wardData?.maxDropPerDay;
-      const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(props)));
-      const weeklyCleanPreview = cleanWeeklyGroundwater(wardData?.weekly || []);
+      const criticalGw = criticalForWardNo(wardNumber(props));
+      const wardLevelConfig = wardLevelStatisticConfig();
+      const selectedWardWeekly = prepareWardWeeklyForStatistic(wardData?.weekly || [], wardLevelConfig.key);
+      const weeklyCleanPreview = cleanWeeklyGroundwater(selectedWardWeekly);
       const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
       const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
       const plottedTrend = plottedGroundwaterTrend(slopeFit);
@@ -3658,13 +3803,22 @@
         </section>
         <section class="ward-tab-panel" data-ward-panel="groundwater">
                   <section class="ward-explain">
-                    <h3>Ward-average Groundwater Trend</h3>
+                    <div class="section-head compact-head">
+                      <div>
+                        <h3>${wardLevelConfig.title}</h3>
+                        <p class="ward-table-note">Switch between average and median weekly ward levels. The selected option controls this graph, the trend statistics, the ward category, and the map colour.</p>
+                      </div>
+                    </div>
+                    <div class="uid-mode-tabs ward-level-toggle" data-ward-level-toggle>
+                      <button type="button" class="${wardLevelConfig.key === 'average' ? 'active' : ''}" data-ward-level-stat="average">Average</button>
+                      <button type="button" class="${wardLevelConfig.key === 'median' ? 'active' : ''}" data-ward-level-stat="median">Median</button>
+                    </div>
 
                     ${hasWardWeeklyData
                       ? `
                         <section class="ward-summary-grid compact slope-strip">
                           ${wardMetric(
-                            'Ward-average Theil-Sen rate',
+                            `${wardLevelConfig.metricPrefix} Theil-Sen rate`,
                             formatTrend(
                               slopeFit.senSlopeFtPerWeek,
                               'ft/week',
@@ -3674,7 +3828,7 @@
                           )}
 
                           ${wardMetric(
-                            'Ward-average linear slope',
+                            `${wardLevelConfig.metricPrefix} linear slope`,
                             formatTrend(
                               slopeFit.slopeFtPerWeek,
                               'ft/week',
@@ -3707,7 +3861,7 @@
                           )}
 
                           ${wardMetric(
-                            'Ward-average interpretation',
+                            `${wardLevelConfig.metricPrefix} interpretation`,
                             plottedTrend.label,
                             plottedTrend.className
                           )}
@@ -3720,7 +3874,7 @@
 
                         <div class="ward-note">
                           These statistics are calculated from the exact cleaned weekly
-                          ward-average values shown in the graph. Positive depth slope means
+                          ${wardLevelConfig.noteLabel} values shown in the graph. Positive depth slope means
                           groundwater is becoming deeper and indicates decline. Negative depth
                           slope means groundwater is becoming shallower and indicates a rise.
                         </div>
@@ -3729,7 +3883,7 @@
                           <button
                             class="mini-chart-expand chart-expand"
                             data-chart-id="wardWeeklyChart"
-                            data-chart-title="Ward-average Groundwater Trend"
+                            data-chart-title="${wardLevelConfig.title}"
                             type="button"
                           >
                             Expand
@@ -3742,7 +3896,7 @@
                       : `
                         <div class="ward-note">
                           Not enough valid weekly groundwater levels to calculate the
-                          ward-average trend. Zero readings and isolated spikes are removed
+                          ${wardLevelConfig.emptyLabel} trend. Zero readings and isolated spikes are removed
                           before analysis.
                         </div>
                       `
@@ -3822,10 +3976,10 @@
                     </section>
 
                    <div class="ward-note">
-                    The final map status is calculated from the cleaned ward-average
+                    The final map status is calculated from the cleaned ${wardLevelConfig.noteLabel}
                     weekly groundwater trend shown above. Individual borewell trends are
                     retained as supporting evidence for identifying localized decline or
-                    improvement, but they do not override the ward-average classification.
+                    improvement, but they do not override the ward-level classification.
                   </div>
                   </section>
                 </section>
@@ -4021,14 +4175,15 @@
       if (!wardData) return;
       const wardCanvas = document.getElementById('wardWeeklyChart');
       if (wardCanvas) {
-        const weeklyGroups = cleanWeeklyGroundwater(wardData.weekly || []);
+        const wardLevelConfig = wardLevelStatisticConfig();
+        const weeklyGroups = cleanWeeklyGroundwater(prepareWardWeeklyForStatistic(wardData.weekly || [], wardLevelConfig.key));
         const chartWeekly = weeklyGroups.cleaned.filter((point) => Number.isFinite(Number(point.averageLevel)));
         const labels = chartWeekly.map((point) => point.label);
         const slopeFit = weeklySlopeFit(chartWeekly);
         const slopeColor = Number(slopeFit.senSlopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.senSlopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
         renderWardLineChart(wardCanvas, labels, [
           {
-            label: 'Average level',
+            label: wardLevelConfig.levelLabel,
             data: chartWeekly.map((point) => point.averageLevel),
             borderColor: '#244e9a',
             showLine: false
@@ -4319,6 +4474,34 @@
           refreshFullscreenChart();
         });
       });
+      document.querySelectorAll('[data-ward-level-stat]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const nextStatistic = button.dataset.wardLevelStat === 'median' ? 'median' : 'average';
+          if (wardLevelStatistic === nextStatistic) return;
+          wardLevelStatistic = nextStatistic;
+          if (activeWardProps) {
+            const selectedCritical = criticalForWardNo(wardNumber(activeWardProps));
+            els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+            els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
+            els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
+            els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
+            els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
+              ? `${wardMapCategory(selectedCritical)}: selected ${wardLevelStatisticConfig().levelLabel.toLowerCase()} controls this ward category.`
+              : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+            els.wardDetailPanel.innerHTML = buildWardDetailHtml(
+              activeWardProps,
+              activeWardData,
+              activeWardSensors,
+              activeSpecificCapacityData
+            );
+            renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
+          }
+          renderMethodSummary({ wards: Array.from(criticalGroundwaterByNo.values()) });
+          refreshWardPopups();
+          renderSensors();
+          refreshFullscreenChart();
+        });
+      });
       refreshGroundwaterOutlierButtons();
       refreshCycleConnectorButtons();
     };
@@ -4334,6 +4517,8 @@
       focusedWardNo = selectedWardNo;
       activeWardData = null;
       activeSpecificCapacityData = null;
+      activeWardProps = props;
+      activeWardSensors = [];
       waterPoints = [];
 
       map.closePopup();
@@ -4341,10 +4526,11 @@
       updateClearSelectionButton();
 
       const selectedWardName = normalizeWardName(wardName(props));
-      const criticalGw = criticalGroundwaterByNo.get(normalizeWardNo(selectedWardNo));
+      const criticalGw = criticalForWardNo(selectedWardNo);
       const wardSensors = sensors
         .filter((sensor) => normalizeWardNo(sensor.wardNo) === selectedWardNo || normalizeWardName(sensor.wardName) === selectedWardName)
         .sort((a, b) => String(a.uid).localeCompare(String(b.uid)));
+      activeWardSensors = wardSensors;
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide', 'critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
@@ -4462,6 +4648,8 @@
           }
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
+        activeWardProps = props;
+        activeWardSensors = wardSensors;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
         renderWardDetailCharts(wardData, capacityPayload);
      } catch (error) {
@@ -4488,6 +4676,8 @@
 
         activeWardData = wardData;
         activeSpecificCapacityData = capacityPayload;
+        activeWardProps = props;
+        activeWardSensors = wardSensors;
 
         els.wardDetailPanel.innerHTML =
           buildWardDetailHtml(
@@ -4563,6 +4753,8 @@
           focusedWardNo = '';
           activeWardData = null;
           activeSpecificCapacityData = null;
+          activeWardProps = null;
+          activeWardSensors = [];
           waterPoints = [];
 
           waterChart?.destroy();
