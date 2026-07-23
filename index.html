@@ -31,6 +31,11 @@
           <button id="refreshData">Refresh Data</button>
           <button id="clearSelection" type="button" disabled>Clear Selection</button>
         </div>
+        <div class="level-toggle" role="group" aria-label="Ward classification level">
+          <span>Classify wards by</span>
+          <button type="button" class="active" data-global-ward-level-stat="average">Average</button>
+          <button type="button" data-global-ward-level-stat="median">Median</button>
+        </div>
       </section>
 
       <section class="controls qc-controls">
@@ -730,7 +735,9 @@
       color: '#020617',
       weight: 5,
       opacity: 1,
-      fillOpacity: Math.min(0.86, Number(base.fillOpacity || 0.18) + 0.12),
+      fillOpacity: Number(base.fillOpacity || 0) > 0
+        ? Math.min(0.86, Number(base.fillOpacity) + 0.12)
+        : 0,
       className: 'ward-focused-shape'
     });
     const wardStyle = (feature) => {
@@ -933,6 +940,48 @@
           }
         });
       });
+    };
+
+    const refreshWardLevelToggleButtons = () => {
+      document.querySelectorAll('[data-global-ward-level-stat], [data-ward-level-stat]').forEach((button) => {
+        const value = button.dataset.globalWardLevelStat || button.dataset.wardLevelStat;
+        button.classList.toggle('active', value === wardLevelStatistic);
+      });
+    };
+
+    const refreshGroundwaterClassificationViews = () => {
+      refreshWardLevelToggleButtons();
+      renderMethodSummary({ wards: Array.from(criticalGroundwaterByNo.values()) });
+      refreshWardPopups();
+      renderSensors();
+      if (activeWardProps) {
+        const selectedCritical = criticalForWardNo(wardNumber(activeWardProps));
+        els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+        els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
+        els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
+        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
+        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
+          ? `${wardMapCategory(selectedCritical)}: selected ${wardLevelStatisticConfig().levelLabel.toLowerCase()} controls this ward category.`
+          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+        els.wardDetailPanel.innerHTML = buildWardDetailHtml(
+          activeWardProps,
+          activeWardData,
+          activeWardSensors,
+          activeSpecificCapacityData
+        );
+        renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
+      }
+      refreshFullscreenChart();
+    };
+
+    const setWardLevelStatistic = (nextStatistic) => {
+      const next = nextStatistic === 'median' ? 'median' : 'average';
+      if (wardLevelStatistic === next) {
+        refreshWardLevelToggleButtons();
+        return;
+      }
+      wardLevelStatistic = next;
+      refreshGroundwaterClassificationViews();
     };
 
     const refreshWardPopups = () => {
@@ -1662,6 +1711,7 @@
         consumptionPayload,
         populationPayload
       } = loaded;
+      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       const activeCriticalGroundwaterPayload = currentDataSource === 'kh'
         ? mergeCriticalGroundwaterWithWeekly(
             wardWeeklyPayload,
@@ -1674,7 +1724,6 @@
       wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
-      wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       criticalGroundwaterByNo = new Map((activeCriticalGroundwaterPayload?.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       renderMethodSummary(activeCriticalGroundwaterPayload);
       applySharedDashboardData(consumptionPayload, populationPayload);
@@ -4482,30 +4531,7 @@
       });
       document.querySelectorAll('[data-ward-level-stat]').forEach((button) => {
         button.addEventListener('click', () => {
-          const nextStatistic = button.dataset.wardLevelStat === 'median' ? 'median' : 'average';
-          if (wardLevelStatistic === nextStatistic) return;
-          wardLevelStatistic = nextStatistic;
-          if (activeWardProps) {
-            const selectedCritical = criticalForWardNo(wardNumber(activeWardProps));
-            els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
-            els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
-            els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-            els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
-            els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
-              ? `${wardMapCategory(selectedCritical)}: selected ${wardLevelStatisticConfig().levelLabel.toLowerCase()} controls this ward category.`
-              : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
-            els.wardDetailPanel.innerHTML = buildWardDetailHtml(
-              activeWardProps,
-              activeWardData,
-              activeWardSensors,
-              activeSpecificCapacityData
-            );
-            renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
-          }
-          renderMethodSummary({ wards: Array.from(criticalGroundwaterByNo.values()) });
-          refreshWardPopups();
-          renderSensors();
-          refreshFullscreenChart();
+          setWardLevelStatistic(button.dataset.wardLevelStat);
         });
       });
       refreshGroundwaterOutlierButtons();
@@ -4952,6 +4978,10 @@
     els.search.addEventListener('input', renderSensors);
     els.fitSensors.addEventListener('click', fitSensors);
     els.refreshData.addEventListener('click', refreshData);
+    document.querySelectorAll('[data-global-ward-level-stat]').forEach((button) => {
+      button.addEventListener('click', () => setWardLevelStatistic(button.dataset.globalWardLevelStat));
+    });
+    refreshWardLevelToggleButtons();
     els.clearSelection?.addEventListener(
       'click',
       clearCurrentSelection
