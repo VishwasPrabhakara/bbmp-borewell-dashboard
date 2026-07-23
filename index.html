@@ -402,6 +402,14 @@
     const criticalForWardNo = (wardNo) => {
       const normalizedWardNo = normalizeWardNo(wardNo);
       const base = criticalGroundwaterByNo.get(normalizedWardNo);
+      const ward = focusedWardNo === normalizedWardNo && activeWardData
+        ? activeWardData
+        : wardWeeklyByNo.get(normalizedWardNo);
+      if (!ward) {
+        return isOldCriticalNoGroundwaterWard(base)
+          ? base
+          : null;
+      }
       return deriveCriticalForWardStatistic(normalizedWardNo, base);
     };
 
