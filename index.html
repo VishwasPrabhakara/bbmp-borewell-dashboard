@@ -861,10 +861,7 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const weekly = wardWeeklyForProps(props);
-      const criticalGw = deriveCriticalForWardData(
-        wardData || wardWeeklyByNo.get(normalizeWardNo(wardNumber(props))),
-        criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(props)))
-      );
+      const criticalGw = criticalForWardNo(wardNumber(props));
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(wardNumber(props)));
       const showCapacity = hasValidSpecificCapacity(capacity);
       return `
