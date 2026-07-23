@@ -210,6 +210,7 @@
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
     let wardStatusFilter = '';
+    let groundwaterMethodMode = 'theil';
     let latestWardStatusCounts = { critical: 0, warning: 0, unverified: 0 };
     let sensors = [];
     let sensorQcByUid = new Map();
@@ -882,6 +883,8 @@
         warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
         unverified: wards.filter((ward) => wardStatusKey(ward) === 'unverified').length
       };
+      const linearCount = wards.filter((ward) => ward.linearMannKendallCritical === 'Yes').length;
+      const theilCount = wards.filter((ward) => ward.theilSenMannKendallCritical === 'Yes').length;
       latestWardStatusCounts = counts;
       if (counts.warning === 0 && wardStatusFilter === 'warning') {
         wardStatusFilter = '';
@@ -890,10 +893,26 @@
       }
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
+        <div class="method-toggle" role="group" aria-label="Groundwater classification method">
+          <button type="button" data-groundwater-method="theil" class="${groundwaterMethodMode === 'theil' ? 'active' : ''}">Theil-Sen + Mann-Kendall</button>
+          <button type="button" data-groundwater-method="linear" class="${groundwaterMethodMode === 'linear' ? 'active' : ''}">Linear + Mann-Kendall</button>
+        </div>
+        <div class="method-row"><span></span><strong>${formatNumber(theilCount)}</strong><span>Theil-Sen + Mann-Kendall critical wards</span></div>
+        <div class="method-row"><span></span><strong>${formatNumber(linearCount)}</strong><span>Linear + Mann-Kendall critical wards</span></div>
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
         ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
         <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
+        <div class="method-note">Selected method controls the ward colours. The specific-capacity time graph uses a straight Theil-Sen trend line only when enough temporal data exists; curves are used only for discharge diagnostic plots.</div>
       `;
+      els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
+        button.addEventListener('click', () => {
+          groundwaterMethodMode = button.dataset.groundwaterMethod || 'theil';
+          const loaded = dashboardDataCache.get(currentDataSource);
+          if (loaded) {
+            applyWardDashboardData(loaded, sourceDisplayName(), true);
+          }
+        });
+      });
     };
 
     const refreshWardPopups = () => {
@@ -1616,18 +1635,26 @@
         wardQcPayload,
         indicatorsPayload,
         wardWeeklyPayload,
+        criticalApiPayload,
         criticalGroundwaterPayload,
         consumptionPayload,
         populationPayload
       } = loaded;
+      const activeCriticalGroundwaterPayload = currentDataSource === 'kh'
+        ? mergeCriticalGroundwaterWithWeekly(
+            wardWeeklyPayload,
+            criticalApiPayload || criticalGroundwaterPayload
+          )
+        : criticalGroundwaterPayload;
+      loaded.criticalGroundwaterPayload = activeCriticalGroundwaterPayload;
 
       wardQcByNo = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardQcByName = new Map((wardQcPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardIndicatorsByNo = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
       wardIndicatorsByName = new Map((indicatorsPayload.wards || []).map((item) => [normalizeWardName(item.wardName), item]));
       wardWeeklyByNo = new Map((wardWeeklyPayload.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      criticalGroundwaterByNo = new Map((criticalGroundwaterPayload?.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
-      renderMethodSummary(criticalGroundwaterPayload);
+      criticalGroundwaterByNo = new Map((activeCriticalGroundwaterPayload?.wards || []).map((item) => [normalizeWardNo(item.wardNo), item]));
+      renderMethodSummary(activeCriticalGroundwaterPayload);
       applySharedDashboardData(consumptionPayload, populationPayload);
       assignSensorsToWards();
       renderSensors();
@@ -1703,6 +1730,7 @@
           wardQcPayload,
           indicatorsPayload,
           wardWeeklyPayload,
+          criticalApiPayload,
           criticalGroundwaterPayload,
           consumptionPayload: shared.consumptionPayload,
           populationPayload: shared.populationPayload
@@ -3001,12 +3029,41 @@
         localWardNos.add(wardNo);
         const apiRow = apiByWard.get(wardNo) || {};
         const linearSlope = Number(localRow.linearSlopeFtPerWeek);
+        const theilSlope = Number(localRow.senSlopeFtPerWeek);
+        const mk = Number(localRow.mannKendallS);
         const pValue = Number(localRow.mannKendallPValue);
         const pointCount = Number(localRow.pointCount || 0);
-        const reason = localRow.groundwaterStatus === 'Critical'
-          ? `Critical groundwater decline: the plotted cleaned ward-average weekly graph has a linear slope of ${formatNumber(linearSlope, 2)} ft/week and Mann-Kendall p-value ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
-          : localRow.groundwaterStatus === 'Watch'
-          ? `Groundwater decline review: the plotted cleaned ward-average weekly graph has a positive linear slope, but Mann-Kendall is not statistically significant.`
+        const hasEnough = pointCount >= 8 && Number.isFinite(pValue) && Number.isFinite(mk);
+        const linearCritical = hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
+        const theilCritical = hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
+        const selectedCritical = groundwaterMethodMode === 'linear' ? linearCritical : theilCritical;
+        const selectedSlope = groundwaterMethodMode === 'linear' ? linearSlope : theilSlope;
+        const selectedMethodName = groundwaterMethodMode === 'linear' ? 'linear slope + Mann-Kendall' : 'Theil-Sen slope + Mann-Kendall';
+        const groundwaterStatus = selectedCritical
+          ? 'Critical'
+          : localRow.groundwaterStatus === 'Insufficient data'
+          ? 'Insufficient data'
+          : 'Normal';
+        const groundwaterDirection = selectedCritical
+          ? 'Declining'
+          : localRow.groundwaterDirection === 'Improving'
+          ? 'Improving'
+          : localRow.groundwaterDirection === 'Possible improvement'
+          ? 'Possible improvement'
+          : localRow.groundwaterStatus === 'Insufficient data'
+          ? 'Not computed'
+          : 'Stable / mixed';
+        const dashboardMapCategory = selectedCritical
+          ? 'Critical: Ward-average groundwater decline'
+          : localRow.dashboardMapCategory === 'Confirmed groundwater rise'
+          ? 'Confirmed groundwater rise'
+          : localRow.dashboardMapCategory === 'Possible groundwater rise'
+          ? 'Possible groundwater rise'
+          : localRow.groundwaterStatus === 'Insufficient data'
+          ? 'Insufficient groundwater data'
+          : 'Stable / mixed groundwater trend';
+        const reason = selectedCritical
+          ? `Critical groundwater decline: selected method is ${selectedMethodName}; slope is ${formatNumber(selectedSlope, 2)} ft/week and Mann-Kendall p-value is ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
           : localRow.groundwaterDirection === 'Improving'
           ? `Confirmed groundwater rise: the plotted cleaned ward-average weekly graph has a negative linear slope and statistically significant Mann-Kendall trend.`
           : localRow.groundwaterDirection === 'Possible improvement'
@@ -3018,6 +3075,15 @@
         return {
           ...apiRow,
           ...localRow,
+          groundwaterStatus,
+          groundwaterDirection,
+          dashboardAction: selectedCritical ? 'Yes' : 'No',
+          dashboardMapCategory,
+          linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
+          theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
+          linearMethodCritical: hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+          theilSenMethodCritical: hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+          mannKendallMethodCritical: hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No',
           previousCriticalWard: apiRow.previousCriticalWard || localRow.previousCriticalWard || 'No',
           previousCriticalWardName: apiRow.previousCriticalWardName || localRow.previousCriticalWardName || '',
           oldConsumptionNoGroundwaterData: apiRow.oldConsumptionNoGroundwaterData === 'Yes' && localRow.groundwaterStatus === 'Insufficient data' ? 'Yes' : 'No',
@@ -3491,6 +3557,7 @@
           <div class="analysis-hint">
             <span>Specific capacity up = improving</span>
             <span>Inverse specific capacity up = worsening</span>
+            <span>Time trend uses a straight Theil-Sen line when enough data exists; curves are only for discharge diagnostic plots.</span>
           </div>
           <div class="uid-mode-tabs sc-toggle" data-sc-index="${index}">
             <button type="button" class="active" data-sc-mode="specific">Specific Capacity</button>
@@ -3855,6 +3922,19 @@
         const trendColor = trendLabel.includes('worsening') ? '#dc2626'
           : trendLabel.includes('improving') ? '#0f8f4d'
             : '#66727f';
+        const trendDataset = trendLabel === 'Insufficient temporal data'
+          ? []
+          : [{
+            label: `Straight Theil-Sen time trend (${trendLabel})`,
+            data: fit.trendData,
+            borderColor: trendColor,
+            borderDash: [7, 5],
+            borderWidth: 3,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            showLine: true,
+            unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
+          }];
         canvas._chart = renderWardLineChart(canvas, labels, [
           {
             label: inverseMode ? 'Inverse specific capacity' : 'Specific capacity',
@@ -3874,17 +3954,7 @@
             showLine: false,
             unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
           },
-          {
-            label: `Theil-Sen trend (${trendLabel})`,
-            data: fit.trendData,
-            borderColor: trendColor,
-            borderDash: [7, 5],
-            borderWidth: 3,
-            pointRadius: 0,
-            pointHoverRadius: 0,
-            showLine: true,
-            unit: inverseMode ? 's/m2' : 'x10^-6 m2/s'
-          }
+          ...trendDataset
         ], {
           showLine: false,
           reverseY: false,

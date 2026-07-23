@@ -476,6 +476,35 @@
       overflow-wrap: anywhere;
     }
 
+    .method-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .method-toggle button {
+      min-height: 30px;
+      padding: 0 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+
+    .method-toggle button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+
+    .method-note {
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+      border-top: 1px solid var(--line);
+      padding-top: 6px;
+    }
+
     .download-panel {
       border: 1px solid var(--line);
       border-radius: 7px;
