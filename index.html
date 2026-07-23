@@ -861,7 +861,10 @@
       const count = props._sensorCount || 0;
       const withData = props._sensorWithDataCount || 0;
       const weekly = wardWeeklyForProps(props);
-      const criticalGw = criticalForWardNo(wardNumber(props));
+      const criticalGw = deriveCriticalForWardData(
+        wardData || wardWeeklyByNo.get(normalizeWardNo(wardNumber(props))),
+        criticalGroundwaterByNo.get(normalizeWardNo(wardNumber(props)))
+      );
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(wardNumber(props)));
       const showCapacity = hasValidSpecificCapacity(capacity);
       return `
@@ -2264,9 +2267,7 @@
       };
     };
 
-    function deriveCriticalForWardStatistic(wardNo, base = null) {
-      const normalizedWardNo = normalizeWardNo(wardNo);
-      const ward = wardWeeklyByNo.get(normalizedWardNo);
+    function deriveCriticalForWardData(ward, base = null) {
       if (!ward) return base;
 
       const levelConfig = wardLevelStatisticConfig();
@@ -2352,6 +2353,14 @@
         usableWeeklyValues: pointCount,
         updateReason: `${reason} Individual borewell trends are supporting evidence and do not override this ward-level classification.`
       };
+    }
+
+    function deriveCriticalForWardStatistic(wardNo, base = null) {
+      const normalizedWardNo = normalizeWardNo(wardNo);
+      const ward = focusedWardNo === normalizedWardNo && activeWardData
+        ? activeWardData
+        : wardWeeklyByNo.get(normalizedWardNo);
+      return deriveCriticalForWardData(ward, base);
     }
 
     const renderCharts = () => {
@@ -4640,6 +4649,9 @@
           shapeLayer.bringToFront();
         }
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
+        if (wardData) {
+          wardWeeklyByNo.set(selectedWardNo, wardData);
+        }
         if (
             currentSelectionSequence !== selectionSequence ||
             focusedWardNo !== selectedWardNo
@@ -4650,8 +4662,17 @@
         activeSpecificCapacityData = capacityPayload;
         activeWardProps = props;
         activeWardSensors = wardSensors;
+        const selectedCritical = criticalForWardNo(selectedWardNo);
+        els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+        els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
+        els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
+        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
+        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
+          ? `${wardMapCategory(selectedCritical)}: selected ${wardLevelStatisticConfig().levelLabel.toLowerCase()} controls this ward category.`
+          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
         renderWardDetailCharts(wardData, capacityPayload);
+        refreshWardPopups();
      } catch (error) {
         if (
           currentSelectionSequence !== selectionSequence ||
@@ -4663,6 +4684,9 @@
         const wardData =
           wardWeeklyByNo.get(selectedWardNo) ||
           null;
+        if (wardData) {
+          wardWeeklyByNo.set(selectedWardNo, wardData);
+        }
 
         const capacityPayload =
           await loadWardSpecificCapacity(selectedWardNo);
@@ -4678,6 +4702,14 @@
         activeSpecificCapacityData = capacityPayload;
         activeWardProps = props;
         activeWardSensors = wardSensors;
+        const selectedCritical = criticalForWardNo(selectedWardNo);
+        els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+        els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
+        els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
+        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
+        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
+          ? `${wardMapCategory(selectedCritical)}: selected ${wardLevelStatisticConfig().levelLabel.toLowerCase()} controls this ward category.`
+          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
 
         els.wardDetailPanel.innerHTML =
           buildWardDetailHtml(
@@ -4691,6 +4723,7 @@
           wardData,
           capacityPayload
         );
+        refreshWardPopups();
 
         showToast(
           `Could not load ward weekly data for ward ${selectedWardNo}.`
