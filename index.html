@@ -3036,7 +3036,17 @@
         const hasEnough = pointCount >= 8 && Number.isFinite(pValue) && Number.isFinite(mk);
         const linearCritical = hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
         const theilCritical = hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
-        const selectedCritical = groundwaterMethodMode === 'linear' ? linearCritical : theilCritical;
+        const officialLinearCritical = apiRow.linearMannKendallCritical === 'Yes'
+          ? true
+          : apiRow.linearMannKendallCritical === 'No'
+          ? false
+          : linearCritical;
+        const officialTheilCritical = apiRow.theilSenMannKendallCritical === 'Yes'
+          ? true
+          : apiRow.theilSenMannKendallCritical === 'No'
+          ? false
+          : theilCritical;
+        const selectedCritical = groundwaterMethodMode === 'linear' ? officialLinearCritical : officialTheilCritical;
         const selectedSlope = groundwaterMethodMode === 'linear' ? linearSlope : theilSlope;
         const selectedMethodName = groundwaterMethodMode === 'linear' ? 'linear slope + Mann-Kendall' : 'Theil-Sen slope + Mann-Kendall';
         const groundwaterStatus = selectedCritical
@@ -3079,11 +3089,11 @@
           groundwaterDirection,
           dashboardAction: selectedCritical ? 'Yes' : 'No',
           dashboardMapCategory,
-          linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
-          theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
-          linearMethodCritical: hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
-          theilSenMethodCritical: hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
-          mannKendallMethodCritical: hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No',
+          linearMannKendallCritical: officialLinearCritical ? 'Yes' : 'No',
+          theilSenMannKendallCritical: officialTheilCritical ? 'Yes' : 'No',
+          linearMethodCritical: apiRow.linearMethodCritical || (hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
+          theilSenMethodCritical: apiRow.theilSenMethodCritical || (hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
+          mannKendallMethodCritical: apiRow.mannKendallMethodCritical || (hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No'),
           previousCriticalWard: apiRow.previousCriticalWard || localRow.previousCriticalWard || 'No',
           previousCriticalWardName: apiRow.previousCriticalWardName || localRow.previousCriticalWardName || '',
           oldConsumptionNoGroundwaterData: apiRow.oldConsumptionNoGroundwaterData === 'Yes' && localRow.groundwaterStatus === 'Insufficient data' ? 'Yes' : 'No',
