@@ -401,6 +401,17 @@
 
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
+      if (critical.groundwaterRiseOverride === 'Yes') {
+        return {
+          ...critical,
+          groundwaterStatus: 'Normal',
+          groundwaterDirection: critical.groundwaterDirection || 'Possible improvement',
+          dashboardAction: 'No',
+          dashboardMapCategory: critical.dashboardMapCategory === 'Confirmed groundwater rise'
+            ? 'Confirmed groundwater rise'
+            : 'Possible groundwater rise'
+        };
+      }
       const selectedCritical = groundwaterMethodMode === 'linear'
         ? critical.linearMannKendallCritical === 'Yes'
         : critical.theilSenMannKendallCritical === 'Yes';
