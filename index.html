@@ -4868,16 +4868,6 @@
       });
     });
 
-    document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
-      button.addEventListener('click', () => {
-        focusedWardNo = '';
-        wardStatusFilter = wardStatusFilter === button.dataset.wardFilter ? '' : button.dataset.wardFilter;
-        updateLegendFilterUi();
-        refreshWardPopups();
-        renderSensors();
-      });
-    });
-
     document.querySelectorAll('button[data-qc-filter]').forEach((button) => {
       button.addEventListener('click', () => {
         qcFilter = button.dataset.qcFilter || '';
