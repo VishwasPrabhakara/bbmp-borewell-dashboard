@@ -918,8 +918,9 @@
         warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
         unverified: wards.filter((ward) => wardStatusKey(ward) === 'unverified').length
       };
-      const linearCount = wards.filter((ward) => ward.linearMannKendallCritical === 'Yes').length;
-      const theilCount = wards.filter((ward) => ward.theilSenMannKendallCritical === 'Yes').length;
+      const selectedMethodLabel = groundwaterMethodMode === 'linear'
+        ? 'Linear + Mann-Kendall'
+        : 'Theil-Sen + Mann-Kendall';
       latestWardStatusCounts = counts;
       if (counts.warning === 0 && wardStatusFilter === 'warning') {
         wardStatusFilter = '';
@@ -932,20 +933,15 @@
           <button type="button" data-groundwater-method="theil" class="${groundwaterMethodMode === 'theil' ? 'active' : ''}">Theil-Sen + Mann-Kendall</button>
           <button type="button" data-groundwater-method="linear" class="${groundwaterMethodMode === 'linear' ? 'active' : ''}">Linear + Mann-Kendall</button>
         </div>
-        <div class="method-row"><span></span><strong>${formatNumber(theilCount)}</strong><span>Theil-Sen + Mann-Kendall critical wards</span></div>
-        <div class="method-row"><span></span><strong>${formatNumber(linearCount)}</strong><span>Linear + Mann-Kendall critical wards</span></div>
-        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical: GW Decline</span></div>
+        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical wards shown on map</span></div>
         ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
         <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
-        <div class="method-note">Selected method and selected ward level (${wardLevelStatisticConfig().levelLabel}) control the ward colours. The specific-capacity time graph uses a straight Theil-Sen trend line only when enough temporal data exists; curves are used only for discharge diagnostic plots.</div>
+        <div class="method-note">Map colours use ${selectedMethodLabel} with ${wardLevelStatisticConfig().levelLabel.toLowerCase()} weekly levels. The number above is the count actually painted as critical on the map.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
         button.addEventListener('click', () => {
           groundwaterMethodMode = button.dataset.groundwaterMethod || 'theil';
-          const loaded = dashboardDataCache.get(currentDataSource);
-          if (loaded) {
-            applyWardDashboardData(loaded, sourceDisplayName(), true);
-          }
+          refreshGroundwaterClassificationViews();
         });
       });
     };
