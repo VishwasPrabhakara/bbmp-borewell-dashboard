@@ -521,25 +521,10 @@
       const category = wardMapCategory(critical);
 
       const visibleCategories = [
-        'Critical: Groundwater Decline',
-        'Groundwater Decline Review',
-        'Unverified: Old Critical Ward'
+        'Critical: Groundwater Decline'
       ];
 
       if (!visibleCategories.includes(category)) return '';
-
-      if (category === 'Unverified: Old Critical Ward') {
-        return `
-          <div class="critical-reason unverified">
-            <strong>Why this ward is marked on the map</strong>
-            <p>
-              This ward was in the previous consumption-based critical list,
-              but sufficient current groundwater-level evidence is not
-              available. It is therefore shown separately as unverified.
-            </p>
-          </div>
-        `;
-      }
 
       const senSlope = formatTrend(
         critical.senSlopeFtPerWeek,
@@ -627,12 +612,6 @@
       className: 'neutral',
       explanation:
         `There are not enough valid cleaned weekly ${levelConfig.noteLabel} groundwater values to calculate a reliable trend.`
-    },
-
-    'Unverified: Old Critical Ward': {
-      className: 'unverified',
-      explanation:
-        'This ward was previously consumption-critical, but sufficient current groundwater-level evidence is unavailable.'
     }
   };
 
@@ -960,7 +939,7 @@
         ? 'Linear + Mann-Kendall'
         : 'Theil-Sen + Mann-Kendall';
       latestWardStatusCounts = counts;
-      if (counts.warning === 0 && wardStatusFilter === 'warning') {
+      if (!['critical', 'rise'].includes(wardStatusFilter)) {
         wardStatusFilter = '';
         refreshWardPopups();
         renderSensors();
@@ -973,7 +952,6 @@
         </div>
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
         <div class="method-row"><span class="swatch" style="background:#15803d"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
-        ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
         <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Raw method-signal counts are not shown as final critical counts.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
@@ -4811,7 +4789,6 @@
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#15803d"></span>Groundwater Rise</button>
-        <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Groundwater Decline Review</button>
         <div class="legend-note">
           Red and green fills show final mapped groundwater status. Use the Average/Median buttons inside the ward groundwater graph to change plotted values.
         </div>
@@ -4825,9 +4802,6 @@
         button.classList.toggle('active', button.dataset.filter === legendFilter);
       });
       document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
-        if (button.dataset.wardFilter === 'warning') {
-          button.style.display = latestWardStatusCounts.warning > 0 ? '' : 'none';
-        }
         if (button.dataset.wardFilter === 'rise') {
           button.style.display = latestWardStatusCounts.rise > 0 ? '' : 'none';
         }
