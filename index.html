@@ -31,11 +31,6 @@
           <button id="refreshData">Refresh Data</button>
           <button id="clearSelection" type="button" disabled>Clear Selection</button>
         </div>
-        <div class="level-toggle" role="group" aria-label="Ward classification level">
-          <span>Ward graph level</span>
-          <button type="button" class="active" data-global-ward-level-stat="average">Average</button>
-          <button type="button" data-global-ward-level-stat="median">Median</button>
-        </div>
       </section>
 
       <section class="controls qc-controls">
@@ -216,7 +211,7 @@
     let currentDataSource = 'kh';
     let wardStatusFilter = '';
     let groundwaterMethodMode = 'theil';
-    let latestWardStatusCounts = { critical: 0, warning: 0, unverified: 0 };
+    let latestWardStatusCounts = { critical: 0, warning: 0, rise: 0 };
     let sensors = [];
     let sensorQcByUid = new Map();
     let wardQcByNo = new Map();
@@ -388,6 +383,14 @@
 
     const isGroundwaterWatchWard = () => false;
 
+    const isGroundwaterRiseWard = (critical) => (
+      critical?.dashboardMapCategory === 'Confirmed groundwater rise'
+      || critical?.dashboardMapCategory === 'Possible groundwater rise'
+      || critical?.groundwaterDirection === 'Improving'
+      || critical?.groundwaterDirection === 'Possible improvement'
+      || critical?.groundwaterRiseOverride === 'Yes'
+    );
+
     const isGroundwaterActionWard = (critical) => (
       isGroundwaterCriticalWard(critical)
       || isGroundwaterWatchWard(critical)
@@ -453,7 +456,7 @@
     const wardStatusKey = (critical) => {
       if (isGroundwaterCriticalWard(critical)) return 'critical';
       if (isGroundwaterWatchWard(critical)) return 'warning';
-      if (isOldCriticalNoGroundwaterWard(critical)) return 'unverified';
+      if (isGroundwaterRiseWard(critical)) return 'rise';
       return '';
     };
 
@@ -498,7 +501,7 @@
       }
 
       if (isOldCriticalNoGroundwaterWard(critical)) {
-        return 'Unverified: Old Critical Ward';
+        return 'Insufficient Groundwater Data';
       }
 
       return 'Stable / Mixed Groundwater Trend';
@@ -802,6 +805,15 @@
           fillColor: '#7f1d1d',
           fillOpacity: 0.74
         };
+      } else if (currentDataSource === 'kh' && isGroundwaterRiseWard(critical)) {
+        style = {
+          color: '#14532d',
+          weight: 3,
+          opacity: 1,
+          fill: true,
+          fillColor: '#15803d',
+          fillOpacity: 0.58
+        };
       } else if (currentDataSource === 'kh' && isLinearMannKendallScreeningWard(critical)) {
         style = {
           color: '#111827',
@@ -810,15 +822,6 @@
           fill: true,
           fillColor: '#c2410c',
           fillOpacity: 0.66
-        };
-      } else if (currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(critical)) {
-        style = {
-          color: '#111827',
-          weight: 3,
-          opacity: 1,
-          fill: true,
-          fillColor: '#4c1d95',
-          fillOpacity: 0.64
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
@@ -950,13 +953,11 @@
       const counts = {
         critical: wards.filter((ward) => wardStatusKey(ward) === 'critical').length,
         warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
-        unverified: wards.filter((ward) => wardStatusKey(ward) === 'unverified').length
+        rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length
       };
       const selectedMethodLabel = groundwaterMethodMode === 'linear'
         ? 'Linear + Mann-Kendall'
         : 'Theil-Sen + Mann-Kendall';
-      const linearCount = sourceWards.filter((ward) => ward.linearMannKendallCritical === 'Yes').length;
-      const theilCount = sourceWards.filter((ward) => ward.theilSenMannKendallCritical === 'Yes').length;
       latestWardStatusCounts = counts;
       if (counts.warning === 0 && wardStatusFilter === 'warning') {
         wardStatusFilter = '';
@@ -969,12 +970,10 @@
           <button type="button" data-groundwater-method="theil" class="${groundwaterMethodMode === 'theil' ? 'active' : ''}">Theil-Sen + Mann-Kendall</button>
           <button type="button" data-groundwater-method="linear" class="${groundwaterMethodMode === 'linear' ? 'active' : ''}">Linear + Mann-Kendall</button>
         </div>
-        <div class="method-row"><span></span><strong>${formatNumber(theilCount)}</strong><span>Theil-Sen + Mann-Kendall critical wards</span></div>
-        <div class="method-row"><span></span><strong>${formatNumber(linearCount)}</strong><span>Linear + Mann-Kendall critical wards</span></div>
-        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Critical wards shown on map</span></div>
+        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
+        <div class="method-row"><span class="swatch" style="background:#15803d"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
         ${counts.warning ? `<div class="method-row"><span class="swatch" style="background:#c2410c"></span><strong>${formatNumber(counts.warning)}</strong><span>Groundwater Decline Review</span></div>` : ''}
-        <div class="method-row"><span class="swatch" style="background:#4c1d95"></span><strong>${formatNumber(counts.unverified)}</strong><span>Unverified: Old Critical</span></div>
-        <div class="method-note">Map colours use the selected official method (${selectedMethodLabel}). Average/Median changes the ward trend graph only.</div>
+        <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Raw method-signal counts are not shown as final critical counts.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -1001,7 +1000,6 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
         els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
           ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
           : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
@@ -4617,7 +4615,6 @@
       els.app.classList.remove('right-collapsed', 'chart-wide', 'critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
       els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(criticalGw));
       els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(criticalGw));
-      els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(criticalGw));
       els.toggleRight.textContent = '›';
       els.toggleRight.title = 'Collapse details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
@@ -4738,7 +4735,6 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
         els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
           ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
           : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
@@ -4778,7 +4774,6 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.app.classList.toggle('unverified-ward-selected', currentDataSource === 'kh' && isOldCriticalNoGroundwaterWard(selectedCritical));
         els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
           ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
           : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
@@ -4814,16 +4809,24 @@
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
+        <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#15803d"></span>Groundwater Rise</button>
         <button class="legend-row" data-ward-filter="warning" type="button"><span class="swatch" style="background:#c2410c"></span>Groundwater Decline Review</button>
-        <button class="legend-row" data-ward-filter="unverified" type="button"><span class="swatch" style="background:#4c1d95"></span>Unverified: Old Critical</button>
+        <div class="legend-title legend-title-spaced">Ward graph level</div>
+        <div class="level-toggle map-level-toggle" role="group" aria-label="Ward graph level">
+          <button type="button" class="active" data-global-ward-level-stat="average">Average</button>
+          <button type="button" data-global-ward-level-stat="median">Median</button>
+        </div>
         <div class="legend-note">
-          Ward categories are based on the cleaned ward-average
-          weekly groundwater trend.
+          Red and green fills show final mapped groundwater status. Average/Median changes the ward trend graph values.
         </div>
       `;
       return div;
     };
     legend.addTo(map);
+    document.querySelectorAll('[data-global-ward-level-stat]').forEach((button) => {
+      button.addEventListener('click', () => setWardLevelStatistic(button.dataset.globalWardLevelStat));
+    });
+    refreshWardLevelToggleButtons();
 
     const updateLegendFilterUi = () => {
       document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
@@ -4832,6 +4835,9 @@
       document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
         if (button.dataset.wardFilter === 'warning') {
           button.style.display = latestWardStatusCounts.warning > 0 ? '' : 'none';
+        }
+        if (button.dataset.wardFilter === 'rise') {
+          button.style.display = latestWardStatusCounts.rise > 0 ? '' : 'none';
         }
         button.classList.toggle('active', button.dataset.wardFilter === wardStatusFilter);
       });
@@ -5027,10 +5033,6 @@
     els.search.addEventListener('input', renderSensors);
     els.fitSensors.addEventListener('click', fitSensors);
     els.refreshData.addEventListener('click', refreshData);
-    document.querySelectorAll('[data-global-ward-level-stat]').forEach((button) => {
-      button.addEventListener('click', () => setWardLevelStatistic(button.dataset.globalWardLevelStat));
-    });
-    refreshWardLevelToggleButtons();
     els.clearSelection?.addEventListener(
       'click',
       clearCurrentSelection

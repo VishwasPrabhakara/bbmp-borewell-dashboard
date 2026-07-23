@@ -116,35 +116,13 @@
       background: #fff7ed;
     }
 
-    .unverified-ward-selected .details {
-      background: #4c1d95;
-      border-left-color: #2e1065;
-    }
-
-    .unverified-ward-selected .details header {
-      background: #4c1d95;
-      border-bottom-color: #6d28d9;
-      color: #fff;
-    }
-
-    .unverified-ward-selected .details-body {
-      background: #f5f3ff;
-    }
-
-    .screening-ward-selected .details header .subhead,
-    .unverified-ward-selected .details header .subhead {
+    .screening-ward-selected .details header .subhead {
       color: #ffedd5;
     }
 
     .screening-ward-selected .details-close {
       border-color: #fed7aa;
       color: #9a3412;
-      background: #fff;
-    }
-
-    .unverified-ward-selected .details-close {
-      border-color: #ddd6fe;
-      color: #4c1d95;
       background: #fff;
     }
 
@@ -950,13 +928,6 @@
       box-shadow: 0 8px 18px rgba(124, 45, 18, 0.08);
     }
 
-    .critical-reason.unverified {
-      border-color: #c4b5fd;
-      background: #f5f3ff;
-      color: #4c1d95;
-      box-shadow: 0 8px 18px rgba(76, 29, 149, 0.08);
-    }
-
     .critical-reason strong {
       display: block;
       color: #991b1b;
@@ -965,8 +936,6 @@
     }
 
     .critical-reason.screening strong { color: #9a3412; }
-    .critical-reason.unverified strong { color: #5b21b6; }
-
     .critical-reason p {
       margin: 0 0 8px;
       line-height: 1.45;
