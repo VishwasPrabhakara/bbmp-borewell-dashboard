@@ -403,6 +403,13 @@
       critical?.oldConsumptionNoGroundwaterData === 'Yes'
     );
 
+    const hasGroundwaterTrendEvidence = (critical) => (
+      critical?.computed === true
+      || critical?.senSlopeFtPerWeek != null
+      || critical?.linearSlopeFtPerWeek != null
+      || Number(critical?.usableWeeklyValues || critical?.pointCount || 0) >= 8
+    );
+
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
       if (critical.groundwaterRiseOverride === 'Yes') {
@@ -439,10 +446,14 @@
       }
       return {
         ...critical,
-        groundwaterStatus: 'Normal',
-        groundwaterDirection: critical.groundwaterDirection === 'Improving' ? 'Improving' : 'Stable / mixed',
+        groundwaterStatus: hasGroundwaterTrendEvidence(critical) ? 'Normal' : 'Insufficient data',
+        groundwaterDirection: hasGroundwaterTrendEvidence(critical)
+          ? critical.groundwaterDirection === 'Improving' ? 'Improving' : 'Stable / mixed'
+          : 'Not computed',
         dashboardAction: 'No',
-        dashboardMapCategory: critical.dashboardMapCategory === 'Confirmed groundwater rise'
+        dashboardMapCategory: !hasGroundwaterTrendEvidence(critical)
+          ? 'Insufficient groundwater data'
+          : critical.dashboardMapCategory === 'Confirmed groundwater rise'
           ? 'Confirmed groundwater rise'
           : 'Stable / mixed groundwater trend'
       };
@@ -459,12 +470,8 @@
       if (isGroundwaterRiseWard(critical)) return 'rise';
       if (
         critical
-        && (
-          critical.computed === true
-          || critical.senSlopeFtPerWeek != null
-          || critical.linearSlopeFtPerWeek != null
-          || critical.dashboardMapCategory === 'Stable / mixed groundwater trend'
-        )
+        && hasGroundwaterTrendEvidence(critical)
+        && critical.dashboardMapCategory === 'Stable / mixed groundwater trend'
       ) {
         return 'stable';
       }
