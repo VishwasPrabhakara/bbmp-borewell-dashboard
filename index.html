@@ -792,26 +792,26 @@
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#7f1d1d',
-          fillOpacity: 0.74
+          fillColor: '#b91c1c',
+          fillOpacity: 0.78
         };
       } else if (currentDataSource === 'kh' && isGroundwaterRiseWard(critical)) {
         style = {
-          color: '#14532d',
+          color: '#0f766e',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#15803d',
-          fillOpacity: 0.58
+          fillColor: '#06b6d4',
+          fillOpacity: 0.62
         };
       } else if (currentDataSource === 'kh' && key === 'stable') {
         style = {
-          color: '#92400e',
+          color: '#a16207',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#f59e0b',
-          fillOpacity: 0.42
+          fillColor: '#facc15',
+          fillOpacity: 0.56
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
@@ -960,9 +960,9 @@
           <button type="button" data-groundwater-method="theil" class="${groundwaterMethodMode === 'theil' ? 'active' : ''}">Theil-Sen + Mann-Kendall</button>
           <button type="button" data-groundwater-method="linear" class="${groundwaterMethodMode === 'linear' ? 'active' : ''}">Linear + Mann-Kendall</button>
         </div>
-        <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
-        <div class="method-row"><span class="swatch" style="background:#15803d"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
-        <div class="method-row"><span class="swatch" style="background:#f59e0b"></span><strong>${formatNumber(counts.stable)}</strong><span>Stable / mixed wards</span></div>
+        <div class="method-row"><span class="swatch" style="background:#b91c1c"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
+        <div class="method-row"><span class="swatch" style="background:#06b6d4"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
+        <div class="method-row"><span class="swatch" style="background:#facc15"></span><strong>${formatNumber(counts.stable)}</strong><span>Stable / mixed wards</span></div>
         <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
@@ -4798,9 +4798,9 @@
         <button class="legend-row" data-filter="water" type="button"><span class="dot" style="background:#1d4ed8"></span>WL only</button>
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
-        <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
-        <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#15803d"></span>Groundwater Rise</button>
-        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#f59e0b"></span>Stable / Mixed</button>
+        <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#b91c1c"></span>Critical: GW Decline</button>
+        <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#06b6d4"></span>Groundwater Rise</button>
+        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#facc15"></span>Stable / Mixed</button>
         <div class="legend-note">
           Red, green, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
         </div>
