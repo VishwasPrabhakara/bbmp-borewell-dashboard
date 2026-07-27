@@ -3264,6 +3264,9 @@
       criticalApiPayload = { wards: [] }
     ) => {
       if (currentDataSource !== 'kh') return { wards: [] };
+      if (Array.isArray(criticalApiPayload?.wards) && criticalApiPayload.wards.length) {
+        return criticalApiPayload;
+      }
 
       const localPayload = buildLocalCriticalGroundwater(wardWeeklyPayload);
       const apiByWard = new Map((criticalApiPayload?.wards || []).map((item) => [
