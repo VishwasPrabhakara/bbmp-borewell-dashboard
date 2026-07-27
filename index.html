@@ -403,17 +403,17 @@
       critical?.oldConsumptionNoGroundwaterData === 'Yes'
     );
 
+    const hasNumericTrendValue = (value) => (
+      value !== null
+      && value !== undefined
+      && String(value).trim() !== ''
+      && String(value).trim().toLowerCase() !== 'null'
+      && Number.isFinite(Number(value))
+    );
+
     const hasGroundwaterTrendEvidence = (critical) => (
-      (
-        critical?.senSlopeFtPerWeek !== null
-        && critical?.senSlopeFtPerWeek !== undefined
-        && Number.isFinite(Number(critical.senSlopeFtPerWeek))
-      )
-      || (
-        critical?.linearSlopeFtPerWeek !== null
-        && critical?.linearSlopeFtPerWeek !== undefined
-        && Number.isFinite(Number(critical.linearSlopeFtPerWeek))
-      )
+      hasNumericTrendValue(critical?.senSlopeFtPerWeek)
+      || hasNumericTrendValue(critical?.linearSlopeFtPerWeek)
     );
 
     const criticalForSelectedMethod = (critical) => {
