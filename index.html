@@ -456,8 +456,18 @@
 
     const wardStatusKey = (critical) => {
       if (isGroundwaterCriticalWard(critical)) return 'critical';
-      if (isGroundwaterWatchWard(critical)) return 'warning';
       if (isGroundwaterRiseWard(critical)) return 'rise';
+      if (
+        critical
+        && (
+          critical.computed === true
+          || critical.senSlopeFtPerWeek != null
+          || critical.linearSlopeFtPerWeek != null
+          || critical.dashboardMapCategory === 'Stable / mixed groundwater trend'
+        )
+      ) {
+        return 'stable';
+      }
       return '';
     };
 
@@ -794,14 +804,14 @@
           fillColor: '#15803d',
           fillOpacity: 0.58
         };
-      } else if (currentDataSource === 'kh' && isLinearMannKendallScreeningWard(critical)) {
+      } else if (currentDataSource === 'kh' && key === 'stable') {
         style = {
-          color: '#111827',
+          color: '#92400e',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#c2410c',
-          fillOpacity: 0.66
+          fillColor: '#f59e0b',
+          fillOpacity: 0.42
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
@@ -932,14 +942,14 @@
       }
       const counts = {
         critical: wards.filter((ward) => wardStatusKey(ward) === 'critical').length,
-        warning: wards.filter((ward) => wardStatusKey(ward) === 'warning').length,
-        rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length
+        rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length,
+        stable: wards.filter((ward) => wardStatusKey(ward) === 'stable').length
       };
       const selectedMethodLabel = groundwaterMethodMode === 'linear'
         ? 'Linear + Mann-Kendall'
         : 'Theil-Sen + Mann-Kendall';
       latestWardStatusCounts = counts;
-      if (!['critical', 'rise'].includes(wardStatusFilter)) {
+      if (!['critical', 'rise', 'stable'].includes(wardStatusFilter)) {
         wardStatusFilter = '';
         refreshWardPopups();
         renderSensors();
@@ -952,7 +962,8 @@
         </div>
         <div class="method-row"><span class="swatch" style="background:#7f1d1d"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
         <div class="method-row"><span class="swatch" style="background:#15803d"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
-        <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Raw method-signal counts are not shown as final critical counts.</div>
+        <div class="method-row"><span class="swatch" style="background:#f59e0b"></span><strong>${formatNumber(counts.stable)}</strong><span>Stable / mixed wards</span></div>
+        <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
       `;
       els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -4789,8 +4800,9 @@
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#7f1d1d"></span>Critical: GW Decline</button>
         <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#15803d"></span>Groundwater Rise</button>
+        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#f59e0b"></span>Stable / Mixed</button>
         <div class="legend-note">
-          Red and green fills show final mapped groundwater status. Use the Average/Median buttons inside the ward groundwater graph to change plotted values.
+          Red, green, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
         </div>
       `;
       return div;
@@ -4802,8 +4814,8 @@
         button.classList.toggle('active', button.dataset.filter === legendFilter);
       });
       document.querySelectorAll('.legend button[data-ward-filter]').forEach((button) => {
-        if (button.dataset.wardFilter === 'rise') {
-          button.style.display = latestWardStatusCounts.rise > 0 ? '' : 'none';
+        if (['rise', 'stable'].includes(button.dataset.wardFilter)) {
+          button.style.display = latestWardStatusCounts[button.dataset.wardFilter] > 0 ? '' : 'none';
         }
         button.classList.toggle('active', button.dataset.wardFilter === wardStatusFilter);
       });
