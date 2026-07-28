@@ -211,7 +211,7 @@
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
     let wardStatusFilter = '';
-    let groundwaterMethodMode = 'theil_mann';
+    let groundwaterMethodMode = 'dashboard';
     let latestWardStatusCounts = { critical: 0, warning: 0, rise: 0 };
     let sensors = [];
     let sensorQcByUid = new Map();
@@ -417,6 +417,7 @@
     );
 
     const groundwaterMethodOptions = [
+      { value: 'dashboard', label: 'Dashboard default' },
       { value: 'linear', label: 'Linear only' },
       { value: 'theil', label: 'Theil-Sen only' },
       { value: 'mann', label: 'Mann-Kendall only' },
@@ -428,7 +429,7 @@
 
     const groundwaterMethodLabel = (value = groundwaterMethodMode) => (
       groundwaterMethodOptions.find((item) => item.value === value)?.label
-      || groundwaterMethodOptions[5].label
+      || groundwaterMethodOptions[0].label
     );
 
     const isYes = (value) => String(value || '').trim().toLowerCase() === 'yes';
@@ -441,6 +442,9 @@
 
     const selectedMethodIsCritical = (critical = {}, mode = groundwaterMethodMode) => {
       const votes = methodVotesForCritical(critical);
+      if (mode === 'dashboard') {
+        return isYes(critical.dashboardAction) || isGroundwaterCriticalWard(critical);
+      }
       if (mode === 'linear') return votes.linear;
       if (mode === 'theil') return votes.theil;
       if (mode === 'mann') return votes.mann;
@@ -458,6 +462,7 @@
     const selectedMethodSlope = (critical = {}, mode = groundwaterMethodMode) => {
       const linear = Number(critical.linearSlopeFtPerWeek);
       const theil = Number(critical.senSlopeFtPerWeek);
+      if (mode === 'dashboard') return Number.isFinite(linear) ? linear : theil;
       if (mode === 'theil' || mode === 'theil_mann') return theil;
       if (mode === 'linear' || mode === 'linear_mann') return linear;
       if (mode === 'linear_theil' || mode === 'all_three') {
@@ -1064,7 +1069,7 @@
         <div class="method-note">Selected rule: ${htmlEscape(selectedMethodLabel)}. Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
       `;
       els.methodSummary.querySelector('[data-groundwater-method-select]')?.addEventListener('change', (event) => {
-          groundwaterMethodMode = event.target.value || 'theil_mann';
+          groundwaterMethodMode = event.target.value || 'dashboard';
           refreshGroundwaterClassificationViews();
       });
     };
