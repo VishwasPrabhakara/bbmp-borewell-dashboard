@@ -3055,6 +3055,51 @@
         if (Number(slope) < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'Improving';
         return 'Mostly stable';
       };
+    const recentWeeklyFit = (weekly = [], windowPoints = 8) => {
+      const points = weekly.filter(hasUsableWeeklyLevel);
+      return weeklySlopeFit(points.slice(-windowPoints));
+    };
+    const trendDirectionFromSlope = (slope) => {
+      const value = Number(slope);
+      if (!Number.isFinite(value)) return 'unknown';
+      if (value > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'decline';
+      if (value < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK) return 'rise';
+      return 'stable';
+    };
+    const trendShapeSummary = (fullFit, recentFit) => {
+      const full = trendDirectionFromSlope(fullFit?.senSlopeFtPerWeek);
+      const recent = trendDirectionFromSlope(recentFit?.senSlopeFtPerWeek);
+      const r2 = Number(fullFit?.r2);
+      const weakLinear = Number.isFinite(r2) && r2 < 0.25;
+      let label = 'Mixed / unstable trend';
+      let note = 'The full-period straight-line fit is weak or the trend changes direction, so recent trend should be checked before action.';
+      if (full === 'decline' && recent === 'decline') {
+        label = 'Consistent decline';
+        note = 'Both full-period and recent trend indicate groundwater depth is increasing.';
+      } else if (full === 'rise' && recent === 'rise') {
+        label = 'Consistent rise';
+        note = 'Both full-period and recent trend indicate groundwater depth is decreasing.';
+      } else if (full === 'decline' && recent === 'rise') {
+        label = 'Reversal: decline then recovery';
+        note = 'The full-period trend indicates decline, but the recent weeks indicate recovery.';
+      } else if (full === 'rise' && recent === 'decline') {
+        label = 'Reversal: recovery then decline';
+        note = 'The full-period trend indicates recovery, but the recent weeks indicate fresh decline.';
+      } else if (recent === 'decline') {
+        label = 'Recent decline';
+        note = 'The full-period trend is mixed/stable, but recent weeks indicate groundwater depth is increasing.';
+      } else if (recent === 'rise') {
+        label = 'Recent rise';
+        note = 'The full-period trend is mixed/stable, but recent weeks indicate groundwater depth is decreasing.';
+      } else if (full === 'stable' && recent === 'stable') {
+        label = 'Mostly stable';
+        note = 'Both full-period and recent slopes are within the stable threshold.';
+      }
+      if (weakLinear) {
+        note += ` Linear R2 is ${formatNumber(r2, 2)}, so a single straight line should be treated only as a rough summary.`;
+      }
+      return { label, note, full, recent, weakLinear };
+    };
      const plottedGroundwaterTrend = (fit) => {
         const rawSenSlope = fit?.senSlopeFtPerWeek;
         const rawLinearSlope = fit?.slopeFtPerWeek;
@@ -3746,6 +3791,8 @@
       const weeklyCleanPreview = cleanWeeklyGroundwater(selectedWardWeekly);
       const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter(hasUsableWeeklyLevel);
       const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
+      const recentFit = recentWeeklyFit(cleanWeeklyPoints, 8);
+      const trendShape = trendShapeSummary(slopeFit, recentFit);
       const plottedTrend = plottedGroundwaterTrend(slopeFit);
       const borewellSummary = borewellAgreementSummary(criticalGw);
       const allDropStatsPositive = Boolean(wardData?.dropAllPositive);
@@ -4044,6 +4091,26 @@
                           )}
 
                           ${wardMetric(
+                            'Recent 8-week Theil-Sen',
+                            formatTrend(
+                              recentFit.senSlopeFtPerWeek,
+                              'ft/week',
+                              2
+                            ),
+                            slopeClass(recentFit.senSlopeFtPerWeek)
+                          )}
+
+                          ${wardMetric(
+                            'Trend shape',
+                            trendShape.label,
+                            trendShape.recent === 'decline'
+                              ? 'bad'
+                              : trendShape.recent === 'rise'
+                              ? 'good'
+                              : ''
+                          )}
+
+                          ${wardMetric(
                             `${wardLevelConfig.metricPrefix} interpretation`,
                             plottedTrend.label,
                             plottedTrend.className
@@ -4061,6 +4128,7 @@
                           groundwater is becoming deeper and indicates decline. Negative depth
                           slope means groundwater is becoming shallower and indicates a rise.
                         </div>
+                        <div class="ward-note">${htmlEscape(trendShape.note)}</div>
 
                         <div class="mini-chart-wrap large">
                           <button
@@ -4363,7 +4431,15 @@
         const chartWeekly = weeklyGroups.cleaned.filter(hasUsableWeeklyLevel);
         const labels = chartWeekly.map((point) => point.label);
         const slopeFit = weeklySlopeFit(chartWeekly);
+        const recentFit = recentWeeklyFit(chartWeekly, 8);
+        const recentTrendStart = Math.max(0, chartWeekly.length - 8);
+        const recentTrendData = labels.map((_, index) => (
+          index >= recentTrendStart
+            ? recentFit.senTrendData?.[index - recentTrendStart] ?? null
+            : null
+        ));
         const slopeColor = Number(slopeFit.senSlopeFtPerWeek) > 0 ? '#dc2626' : Number(slopeFit.senSlopeFtPerWeek) < 0 ? '#0f8f4d' : '#66727f';
+        const recentSlopeColor = Number(recentFit.senSlopeFtPerWeek) > 0 ? '#991b1b' : Number(recentFit.senSlopeFtPerWeek) < 0 ? '#047857' : '#a16207';
         renderWardLineChart(wardCanvas, labels, [
           {
             label: wardLevelConfig.levelLabel,
@@ -4387,6 +4463,16 @@
             borderColor: '#f97316',
             borderDash: [3, 4],
             borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            showLine: true
+          },
+          {
+            label: `Recent 8-week trend (${formatTrend(recentFit.senSlopeFtPerWeek, 'ft/week', 2)})`,
+            data: recentTrendData,
+            borderColor: recentSlopeColor,
+            borderDash: [10, 3],
+            borderWidth: 4,
             pointRadius: 0,
             pointHoverRadius: 0,
             showLine: true
