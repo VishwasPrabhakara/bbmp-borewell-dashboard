@@ -650,8 +650,35 @@
         </div>
       `;
     };
-    const wardCategoryCardHtml = (critical) => {
-  const category = wardMapCategory(critical);
+    const wardCategoryDisplay = (critical, trendShape = null) => {
+      const category = wardMapCategory(critical);
+
+      if (category === 'Critical: Groundwater Decline') {
+        if (trendShape?.recent === 'rise') {
+          return {
+            category: 'Critical by full-period method; recent recovery observed',
+            className: 'critical',
+            explanation:
+              'The selected full-period groundwater method still marks this ward as declining, but the recent 8-week trend indicates recovery. Treat it as a priority ward with improving recent evidence.'
+          };
+        }
+
+        if (trendShape?.recent === 'stable') {
+          return {
+            category: 'Critical by full-period method; recent trend stable',
+            className: 'critical',
+            explanation:
+              'The selected full-period groundwater method still marks this ward as declining, but the recent 8-week trend is mostly stable. Review the full trend and recent readings together.'
+          };
+        }
+      }
+
+      return { category, className: null, explanation: null };
+    };
+
+    const wardCategoryCardHtml = (critical, trendShape = null) => {
+  const categoryDisplay = wardCategoryDisplay(critical, trendShape);
+  const category = categoryDisplay.category;
   const levelConfig = wardLevelStatisticConfig();
 
   const categoryConfig = {
@@ -687,6 +714,12 @@
   };
 
   const config =
+    categoryDisplay.explanation
+      ? {
+          className: categoryDisplay.className || 'neutral',
+          explanation: categoryDisplay.explanation
+        }
+      :
     categoryConfig[category] ||
     categoryConfig['Stable / Mixed Groundwater Trend'];
 
@@ -1053,9 +1086,10 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
-          ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
-          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+        els.detailSubhead.textContent = wardDetailSubheadText(
+          selectedCritical,
+          activeWardData
+        );
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(
           activeWardProps,
           activeWardData,
@@ -3100,6 +3134,33 @@
       }
       return { label, note, full, recent, weakLinear };
     };
+    const trendShapeForWardData = (wardData) => {
+      const levelConfig = wardLevelStatisticConfig();
+      const selectedWardWeekly = prepareWardWeeklyForStatistic(
+        wardData?.weekly || [],
+        levelConfig.key
+      );
+      const weeklyCleanPreview = cleanWeeklyGroundwater(selectedWardWeekly);
+      const cleanWeeklyPoints = weeklyCleanPreview.cleaned.filter(hasUsableWeeklyLevel);
+      const slopeFit = weeklySlopeFit(cleanWeeklyPoints);
+      const recentFit = recentWeeklyFit(cleanWeeklyPoints, 8);
+      return trendShapeSummary(slopeFit, recentFit);
+    };
+    const wardDetailSubheadText = (critical, wardData = null) => {
+      if (!critical || wardMapCategory(critical) === 'Not current groundwater action') {
+        return `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+      }
+
+      const trendShape = wardData ? trendShapeForWardData(wardData) : null;
+      const display = wardCategoryDisplay(critical, trendShape);
+      if (display.category.includes('recent recovery observed')) {
+        return `${display.category}: full-period method is still critical, but recent weeks show recovery.`;
+      }
+      if (display.category.includes('recent trend stable')) {
+        return `${display.category}: full-period method is still critical, but recent weeks are stable.`;
+      }
+      return `${display.category}: selected official groundwater method controls this ward category.`;
+    };
      const plottedGroundwaterTrend = (fit) => {
         const rawSenSlope = fit?.senSlopeFtPerWeek;
         const rawLinearSlope = fit?.slopeFtPerWeek;
@@ -3995,7 +4056,7 @@
           <button type="button" data-ward-tab="uids">UID Charts</button>
           <button type="button" data-ward-tab="downloads">Downloads</button>
         </nav>
-        ${wardCategoryCardHtml(criticalGw)}
+        ${wardCategoryCardHtml(criticalGw, trendShape)}
         <section class="ward-tab-panel active" data-ward-panel="overview">
           ${criticalReasonHtml(criticalGw)}
           <section class="ward-summary-grid">
@@ -4800,9 +4861,7 @@
       bringSensorsToFront();
 
       els.detailTitle.textContent = `Ward ${wardNumber(props)}: ${wardName(props)}`;
-      els.detailSubhead.textContent = criticalGw && wardMapCategory(criticalGw) !== 'Not current groundwater action'
-        ? `${wardMapCategory(criticalGw)}: review groundwater trend methods, borewell support, and specific-capacity sessions.`
-        : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+      els.detailSubhead.textContent = wardDetailSubheadText(criticalGw);
       els.wardDetailPanel.innerHTML = '<div class="empty-chart">Loading ward weekly groundwater trend...</div>';
       const zoomToSelectedWard = () => {
         if (
@@ -4902,9 +4961,10 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
-          ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
-          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+        els.detailSubhead.textContent = wardDetailSubheadText(
+          selectedCritical,
+          wardData
+        );
         els.wardDetailPanel.innerHTML = buildWardDetailHtml(props, wardData, wardSensors, capacityPayload);
         renderWardDetailCharts(wardData, capacityPayload);
         refreshWardPopups();
@@ -4941,9 +5001,10 @@
         els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
         els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(selectedCritical));
         els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(selectedCritical));
-        els.detailSubhead.textContent = selectedCritical && wardMapCategory(selectedCritical) !== 'Not current groundwater action'
-          ? `${wardMapCategory(selectedCritical)}: selected official groundwater method controls this ward category.`
-          : `GOOD sensor levels from ${sourceDisplayName()} data using all available cleaned records.`;
+        els.detailSubhead.textContent = wardDetailSubheadText(
+          selectedCritical,
+          wardData
+        );
 
         els.wardDetailPanel.innerHTML =
           buildWardDetailHtml(
