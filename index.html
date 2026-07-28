@@ -211,7 +211,7 @@
     let sensorLayer = L.layerGroup().addTo(map);
     let currentDataSource = 'kh';
     let wardStatusFilter = '';
-    let groundwaterMethodMode = 'theil';
+    let groundwaterMethodMode = 'theil_mann';
     let latestWardStatusCounts = { critical: 0, warning: 0, rise: 0 };
     let sensors = [];
     let sensorQcByUid = new Map();
@@ -416,6 +416,56 @@
       || hasNumericTrendValue(critical?.linearSlopeFtPerWeek)
     );
 
+    const groundwaterMethodOptions = [
+      { value: 'linear', label: 'Linear only' },
+      { value: 'theil', label: 'Theil-Sen only' },
+      { value: 'mann', label: 'Mann-Kendall only' },
+      { value: 'linear_theil', label: 'Linear + Theil-Sen' },
+      { value: 'linear_mann', label: 'Linear + Mann-Kendall' },
+      { value: 'theil_mann', label: 'Theil-Sen + Mann-Kendall' },
+      { value: 'all_three', label: 'Linear + Theil-Sen + Mann-Kendall' }
+    ];
+
+    const groundwaterMethodLabel = (value = groundwaterMethodMode) => (
+      groundwaterMethodOptions.find((item) => item.value === value)?.label
+      || groundwaterMethodOptions[5].label
+    );
+
+    const isYes = (value) => String(value || '').trim().toLowerCase() === 'yes';
+
+    const methodVotesForCritical = (critical = {}) => ({
+      linear: isYes(critical.linearMethodCritical),
+      theil: isYes(critical.theilSenMethodCritical),
+      mann: isYes(critical.mannKendallMethodCritical)
+    });
+
+    const selectedMethodIsCritical = (critical = {}, mode = groundwaterMethodMode) => {
+      const votes = methodVotesForCritical(critical);
+      if (mode === 'linear') return votes.linear;
+      if (mode === 'theil') return votes.theil;
+      if (mode === 'mann') return votes.mann;
+      if (mode === 'linear_theil') return votes.linear && votes.theil;
+      if (mode === 'linear_mann') {
+        return isYes(critical.linearMannKendallCritical) || (votes.linear && votes.mann);
+      }
+      if (mode === 'theil_mann') {
+        return isYes(critical.theilSenMannKendallCritical) || (votes.theil && votes.mann);
+      }
+      if (mode === 'all_three') return votes.linear && votes.theil && votes.mann;
+      return votes.theil && votes.mann;
+    };
+
+    const selectedMethodSlope = (critical = {}, mode = groundwaterMethodMode) => {
+      const linear = Number(critical.linearSlopeFtPerWeek);
+      const theil = Number(critical.senSlopeFtPerWeek);
+      if (mode === 'theil' || mode === 'theil_mann') return theil;
+      if (mode === 'linear' || mode === 'linear_mann') return linear;
+      if (mode === 'linear_theil' || mode === 'all_three') {
+        return Number.isFinite(theil) ? theil : linear;
+      }
+      return Number.isFinite(linear) ? linear : theil;
+    };
+
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
       if (critical.groundwaterRiseOverride === 'Yes') {
@@ -429,16 +479,15 @@
             : 'Possible groundwater rise'
         };
       }
-      const selectedCritical = groundwaterMethodMode === 'linear'
-        ? critical.linearMannKendallCritical === 'Yes'
-        : critical.theilSenMannKendallCritical === 'Yes';
+      const selectedCritical = selectedMethodIsCritical(critical);
       if (selectedCritical) {
         return {
           ...critical,
           groundwaterStatus: 'Critical',
           groundwaterDirection: 'Declining',
           dashboardAction: 'Yes',
-          dashboardMapCategory: 'Critical: Ward-average groundwater decline'
+          dashboardMapCategory: 'Critical: Ward-average groundwater decline',
+          selectedGroundwaterMethod: groundwaterMethodLabel()
         };
       }
       if (isOldCriticalNoGroundwaterWard(critical)) {
@@ -958,9 +1007,7 @@
         rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length,
         stable: wards.filter((ward) => wardStatusKey(ward) === 'stable').length
       };
-      const selectedMethodLabel = groundwaterMethodMode === 'linear'
-        ? 'Linear + Mann-Kendall'
-        : 'Theil-Sen + Mann-Kendall';
+      const selectedMethodLabel = groundwaterMethodLabel();
       latestWardStatusCounts = counts;
       if (!['critical', 'rise', 'stable'].includes(wardStatusFilter)) {
         wardStatusFilter = '';
@@ -970,19 +1017,23 @@
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
         <div class="method-toggle" role="group" aria-label="Groundwater classification method">
-          <button type="button" data-groundwater-method="theil" class="${groundwaterMethodMode === 'theil' ? 'active' : ''}">Theil-Sen + Mann-Kendall</button>
-          <button type="button" data-groundwater-method="linear" class="${groundwaterMethodMode === 'linear' ? 'active' : ''}">Linear + Mann-Kendall</button>
+          <label>
+            Classification method
+            <select data-groundwater-method-select>
+              ${groundwaterMethodOptions.map((item) => `
+                <option value="${item.value}" ${item.value === groundwaterMethodMode ? 'selected' : ''}>${item.label}</option>
+              `).join('')}
+            </select>
+          </label>
         </div>
         <div class="method-row"><span class="swatch" style="background:#b91c1c"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
         <div class="method-row"><span class="swatch" style="background:#06b6d4"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
         <div class="method-row"><span class="swatch" style="background:#facc15"></span><strong>${formatNumber(counts.stable)}</strong><span>Stable / mixed wards</span></div>
-        <div class="method-note">Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
+        <div class="method-note">Selected rule: ${htmlEscape(selectedMethodLabel)}. Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
       `;
-      els.methodSummary.querySelectorAll('[data-groundwater-method]').forEach((button) => {
-        button.addEventListener('click', () => {
-          groundwaterMethodMode = button.dataset.groundwaterMethod || 'theil';
+      els.methodSummary.querySelector('[data-groundwater-method-select]')?.addEventListener('change', (event) => {
+          groundwaterMethodMode = event.target.value || 'theil_mann';
           refreshGroundwaterClassificationViews();
-        });
       });
     };
 
@@ -2386,11 +2437,27 @@
         && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
         && mk > 0
         && pValue <= TREND_SIGNIFICANCE_ALPHA;
-      const selectedCritical = groundwaterMethodMode === 'linear' ? linearCritical : theilCritical;
-      const selectedSlope = groundwaterMethodMode === 'linear' ? linearSlope : theilSlope;
-      const selectedMethodName = groundwaterMethodMode === 'linear'
-        ? 'linear slope + Mann-Kendall'
-        : 'Theil-Sen slope + Mann-Kendall';
+      const linearMethodCritical = hasEnough
+        && Number.isFinite(linearSlope)
+        && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+      const theilMethodCritical = hasEnough
+        && Number.isFinite(theilSlope)
+        && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+      const mannKendallMethodCritical = hasEnough
+        && mk > 0
+        && pValue <= TREND_SIGNIFICANCE_ALPHA;
+      const localCritical = {
+        linearMethodCritical: linearMethodCritical ? 'Yes' : 'No',
+        theilSenMethodCritical: theilMethodCritical ? 'Yes' : 'No',
+        mannKendallMethodCritical: mannKendallMethodCritical ? 'Yes' : 'No',
+        linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
+        theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
+        linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? linearSlope : null,
+        senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null
+      };
+      const selectedCritical = selectedMethodIsCritical(localCritical);
+      const selectedSlope = selectedMethodSlope(localCritical);
+      const selectedMethodName = groundwaterMethodLabel();
       const linearRise = Number.isFinite(linearSlope) && linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
       const significant = Number.isFinite(pValue) && pValue <= TREND_SIGNIFICANCE_ALPHA;
       const improving = hasEnough && linearRise && mk < 0;
@@ -2435,9 +2502,9 @@
         dashboardMapCategory,
         linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
         theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
-        linearMethodCritical: hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
-        theilSenMethodCritical: hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
-        mannKendallMethodCritical: hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No',
+        linearMethodCritical: linearMethodCritical ? 'Yes' : 'No',
+        theilSenMethodCritical: theilMethodCritical ? 'Yes' : 'No',
+        mannKendallMethodCritical: mannKendallMethodCritical ? 'Yes' : 'No',
         oldConsumptionNoGroundwaterData: oldUnverified ? 'Yes' : 'No',
         declineStrengthFtPerWeek: Number.isFinite(selectedSlope) ? selectedSlope : null,
         linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? Number(linearSlope.toFixed(4)) : null,
@@ -3297,9 +3364,18 @@
           : apiRow.theilSenMannKendallCritical === 'No'
           ? false
           : theilCritical;
-        const selectedCritical = groundwaterMethodMode === 'linear' ? officialLinearCritical : officialTheilCritical;
-        const selectedSlope = groundwaterMethodMode === 'linear' ? linearSlope : theilSlope;
-        const selectedMethodName = groundwaterMethodMode === 'linear' ? 'linear slope + Mann-Kendall' : 'Theil-Sen slope + Mann-Kendall';
+        const fallbackCritical = {
+          linearMethodCritical: apiRow.linearMethodCritical || (hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
+          theilSenMethodCritical: apiRow.theilSenMethodCritical || (hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
+          mannKendallMethodCritical: apiRow.mannKendallMethodCritical || (hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No'),
+          linearMannKendallCritical: officialLinearCritical ? 'Yes' : 'No',
+          theilSenMannKendallCritical: officialTheilCritical ? 'Yes' : 'No',
+          linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? linearSlope : null,
+          senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null
+        };
+        const selectedCritical = selectedMethodIsCritical(fallbackCritical);
+        const selectedSlope = selectedMethodSlope(fallbackCritical);
+        const selectedMethodName = groundwaterMethodLabel();
         const groundwaterStatus = selectedCritical
           ? 'Critical'
           : localRow.groundwaterStatus === 'Insufficient data'
@@ -3342,9 +3418,9 @@
           dashboardMapCategory,
           linearMannKendallCritical: officialLinearCritical ? 'Yes' : 'No',
           theilSenMannKendallCritical: officialTheilCritical ? 'Yes' : 'No',
-          linearMethodCritical: apiRow.linearMethodCritical || (hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
-          theilSenMethodCritical: apiRow.theilSenMethodCritical || (hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
-          mannKendallMethodCritical: apiRow.mannKendallMethodCritical || (hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No'),
+          linearMethodCritical: fallbackCritical.linearMethodCritical,
+          theilSenMethodCritical: fallbackCritical.theilSenMethodCritical,
+          mannKendallMethodCritical: fallbackCritical.mannKendallMethodCritical,
           previousCriticalWard: apiRow.previousCriticalWard || localRow.previousCriticalWard || 'No',
           previousCriticalWardName: apiRow.previousCriticalWardName || localRow.previousCriticalWardName || '',
           oldConsumptionNoGroundwaterData: apiRow.oldConsumptionNoGroundwaterData === 'Yes' && localRow.groundwaterStatus === 'Insufficient data' ? 'Yes' : 'No',
