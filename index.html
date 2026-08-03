@@ -122,6 +122,8 @@
           <div class="detail"><span>UID</span><strong id="detailUid">-</strong></div>
           <div class="detail"><span>Ward No</span><strong id="detailWardNo">-</strong></div>
           <div class="detail"><span>Ward Name</span><strong id="detailWardName">-</strong></div>
+          <div class="detail"><span>Motor HP</span><strong id="detailMotorHp">-</strong></div>
+          <div class="detail"><span>Borewell Depth</span><strong id="detailBorewellDepth">-</strong></div>
           <div class="detail"><span>Lat / Lon</span><strong id="detailLatLon">-</strong></div>
           <div class="detail"><span>First Data</span><strong id="detailFirstData">-</strong></div>
           <div class="detail"><span>Last Data</span><strong id="detailLastData">-</strong></div>
@@ -278,6 +280,8 @@
       detailUid: document.getElementById('detailUid'),
       detailWardNo: document.getElementById('detailWardNo'),
       detailWardName: document.getElementById('detailWardName'),
+      detailMotorHp: document.getElementById('detailMotorHp'),
+      detailBorewellDepth: document.getElementById('detailBorewellDepth'),
       detailLatLon: document.getElementById('detailLatLon'),
       detailFirstData: document.getElementById('detailFirstData'),
       detailLastData: document.getElementById('detailLastData'),
@@ -363,6 +367,16 @@
       const number = Number(value);
       if (!Number.isFinite(number)) return value || '-';
       return number.toLocaleString('en-IN', { maximumFractionDigits: decimals });
+    };
+    const formatMotorHp = (value) => {
+      const number = Number(value);
+      if (!Number.isFinite(number) || number <= 0) return '-';
+      return `${formatNumber(number, number % 1 ? 1 : 0)} HP`;
+    };
+    const formatDepth = (value) => {
+      const number = Number(value);
+      if (!Number.isFinite(number) || number <= 0) return '-';
+      return `${formatNumber(number, number % 1 ? 1 : 0)} ft`;
     };
     const htmlEscape = (value) => String(value ?? '')
       .replace(/&/g, '&amp;')
@@ -1182,6 +1196,8 @@
       <div><strong>UID:</strong> ${sensor.uid}</div>
       <div><strong>Ward No:</strong> ${sensor.wardNo || 'Not matched'}</div>
       <div><strong>Ward Name:</strong> ${sensor.wardName || 'Not matched'}</div>
+      <div><strong>Motor HP:</strong> ${formatMotorHp(sensor.motorHp)}</div>
+      <div><strong>Borewell Depth:</strong> ${formatDepth(sensor.borewellDepth)}</div>
       <div><strong>Lat/Lon:</strong> ${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}</div>
       <div><strong>Data:</strong> ${dataCategoryLabels[sensor.dataCategory || 'none'] || dataCategoryLabels.none}</div>
       <div><strong>QC:</strong> ${qcStatusLabels[qcStatusForSensor(sensor)] || 'Not scored'}</div>
@@ -1322,6 +1338,8 @@
         els.detailUid.textContent = '-';
         els.detailWardNo.textContent = '-';
         els.detailWardName.textContent = '-';
+        els.detailMotorHp.textContent = '-';
+        els.detailBorewellDepth.textContent = '-';
         els.detailLatLon.textContent = '-';
         els.detailFirstData.textContent = '-';
         els.detailLastData.textContent = '-';
@@ -2816,6 +2834,8 @@
       els.detailUid.textContent = sensor.uid;
       els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
       els.detailWardName.textContent = sensor.wardName || 'Not matched';
+      els.detailMotorHp.textContent = formatMotorHp(sensor.motorHp);
+      els.detailBorewellDepth.textContent = formatDepth(sensor.borewellDepth);
       els.detailLatLon.textContent = hasValidLocation(sensor)
         ? `${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}`
         : 'Location missing';
