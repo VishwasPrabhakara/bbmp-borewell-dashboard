@@ -528,6 +528,13 @@
       return Number.isFinite(linear) ? linear : theil;
     };
 
+    const isSelectedGroundwaterStable = (critical = {}) => {
+      const slope = selectedMethodSlope(critical);
+      return hasGroundwaterTrendEvidence(critical)
+        && Number.isFinite(slope)
+        && Math.abs(slope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+    };
+
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
       if (critical.groundwaterRiseOverride === 'Yes') {
@@ -561,18 +568,21 @@
           dashboardMapCategory: 'Insufficient groundwater data'
         };
       }
+      const selectedStable = isSelectedGroundwaterStable(critical);
       return {
         ...critical,
         groundwaterStatus: hasGroundwaterTrendEvidence(critical) ? 'Normal' : 'Insufficient data',
         groundwaterDirection: hasGroundwaterTrendEvidence(critical)
-          ? critical.groundwaterDirection === 'Improving' ? 'Improving' : 'Stable / mixed'
+          ? critical.groundwaterDirection === 'Improving' ? 'Improving' : selectedStable ? 'Stable' : 'Mixed / not classified'
           : 'Not computed',
         dashboardAction: 'No',
         dashboardMapCategory: !hasGroundwaterTrendEvidence(critical)
           ? 'Insufficient groundwater data'
           : critical.dashboardMapCategory === 'Confirmed groundwater rise'
           ? 'Confirmed groundwater rise'
-          : 'Stable / mixed groundwater trend'
+          : selectedStable
+          ? 'Stable groundwater trend'
+          : 'Mixed / unclassified groundwater trend'
       };
     };
 
@@ -671,7 +681,7 @@
       if (isGroundwaterRiseWard(critical)) return 'rise';
       if (
         critical
-        && hasGroundwaterTrendEvidence(critical)
+        && critical.dashboardMapCategory === 'Stable groundwater trend'
       ) {
         return 'stable';
       }
@@ -713,16 +723,16 @@
 
       if (
         critical.dashboardMapCategory ===
-        'Stable / mixed groundwater trend'
+        'Stable groundwater trend'
       ) {
-        return 'Stable / Mixed Groundwater Trend';
+        return 'Stable Groundwater Trend';
       }
 
       if (isOldCriticalNoGroundwaterWard(critical)) {
         return 'Insufficient Groundwater Data';
       }
 
-      return 'Stable / Mixed Groundwater Trend';
+      return 'Mixed / Unclassified Groundwater Trend';
     };
     const hasValidSpecificCapacity = (capacity) => (
       Boolean(capacity)
@@ -846,10 +856,16 @@
         `The cleaned ${levelConfig.noteLabel} weekly groundwater series indicates a possible rise, but the trend is not statistically significant.`
     },
 
-    'Stable / Mixed Groundwater Trend': {
+    'Stable Groundwater Trend': {
       className: 'neutral',
       explanation:
-        `The cleaned ${levelConfig.noteLabel} groundwater indicators are stable or do not agree strongly enough to classify a clear rise or decline.`
+        `The cleaned ${levelConfig.noteLabel} groundwater slope is within the near-flat threshold, so this ward is treated as stable.`
+    },
+
+    'Mixed / Unclassified Groundwater Trend': {
+      className: 'neutral',
+      explanation:
+        `The cleaned ${levelConfig.noteLabel} groundwater indicators do not meet the selected decline, rise, or near-flat stable criteria.`
     },
 
     'Insufficient Groundwater Data': {
@@ -867,7 +883,7 @@
         }
       :
     categoryConfig[category] ||
-    categoryConfig['Stable / Mixed Groundwater Trend'];
+    categoryConfig['Mixed / Unclassified Groundwater Trend'];
 
   return `
     <section class="ward-category-card ${config.className}">
@@ -1251,7 +1267,7 @@
             <button type="button" data-method-status-filter="critical" title="Filter critical wards"><i style="background:${mapLensCriticalColor()}"></i>${formatNumber(counts.critical)}</button>
             ${wardAnalysisLens === 'groundwater' ? `
               <button type="button" data-method-status-filter="rise" title="Filter groundwater rise wards"><i style="background:#0891b2"></i>${formatNumber(counts.rise)}</button>
-              <button type="button" data-method-status-filter="stable" title="Filter not-declining or mixed wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
+              <button type="button" data-method-status-filter="stable" title="Filter near-flat stable wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
             ` : ''}
             ${wardAnalysisLens !== 'groundwater' && wardAnalysisLens !== 'consumption' ? `
               <button type="button" data-method-status-filter="stable" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.stable)}</button>
@@ -2769,6 +2785,9 @@
       };
       const selectedCritical = selectedMethodIsCritical(localCritical);
       const selectedSlope = selectedMethodSlope(localCritical);
+      const selectedStable = hasSlopeWeeks
+        && Number.isFinite(selectedSlope)
+        && Math.abs(selectedSlope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
       const selectedMethodName = groundwaterMethodLabel();
       const linearRise = Number.isFinite(linearSlope) && linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
       const significant = Number.isFinite(pValue) && pValue <= TREND_SIGNIFICANCE_ALPHA;
@@ -2783,14 +2802,14 @@
         ? significant ? 'Improving' : 'Possible improvement'
         : insufficient
         ? 'Not computed'
-        : 'Stable / mixed';
+        : selectedStable ? 'Stable' : 'Mixed / not classified';
       let dashboardMapCategory = selectedCritical
         ? `Critical: ${levelConfig.metricPrefix} groundwater decline`
         : improving
         ? significant ? 'Confirmed groundwater rise' : 'Possible groundwater rise'
         : insufficient
         ? 'Insufficient groundwater data'
-        : 'Stable / mixed groundwater trend';
+        : selectedStable ? 'Stable groundwater trend' : 'Mixed / unclassified groundwater trend';
       if (oldUnverified) {
         groundwaterStatus = 'Insufficient data';
         groundwaterDirection = 'Not computed';
@@ -2802,7 +2821,9 @@
         ? `${significant ? 'Confirmed' : 'Possible'} groundwater rise: selected level is ${statLabel}; the cleaned weekly graph has a negative linear slope.`
         : insufficient
         ? `Not enough plotted cleaned weekly ${statLabel} points are available. Points used: ${formatNumber(pointCount)}.`
-        : `Stable or mixed groundwater trend: selected level is ${statLabel}; the cleaned weekly graph does not show confirmed decline.`;
+        : selectedStable
+        ? `Stable groundwater trend: selected level is ${statLabel}; selected slope is within +/-${formatNumber(LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK, 2)} ft/week.`
+        : `Mixed groundwater trend: selected level is ${statLabel}; the cleaned weekly graph is neither near-flat, declining, nor improving under the selected rule.`;
 
       return {
         ...(base || {}),
@@ -3760,6 +3781,9 @@
         };
         const selectedCritical = selectedMethodIsCritical(fallbackCritical);
         const selectedSlope = selectedMethodSlope(fallbackCritical);
+        const selectedStable = hasSlopeWeeks
+          && Number.isFinite(selectedSlope)
+          && Math.abs(selectedSlope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
         const selectedMethodName = groundwaterMethodLabel();
         const groundwaterStatus = selectedCritical
           ? 'Critical'
@@ -3774,7 +3798,7 @@
           ? 'Possible improvement'
           : localRow.groundwaterStatus === 'Insufficient data'
           ? 'Not computed'
-          : 'Stable / mixed';
+          : selectedStable ? 'Stable' : 'Mixed / not classified';
         const dashboardMapCategory = selectedCritical
           ? 'Critical: Ward-average groundwater decline'
           : localRow.dashboardMapCategory === 'Confirmed groundwater rise'
@@ -3783,7 +3807,7 @@
           ? 'Possible groundwater rise'
           : localRow.groundwaterStatus === 'Insufficient data'
           ? 'Insufficient groundwater data'
-          : 'Stable / mixed groundwater trend';
+          : selectedStable ? 'Stable groundwater trend' : 'Mixed / unclassified groundwater trend';
         const reason = selectedCritical
           ? `Critical groundwater decline: selected method is ${selectedMethodName}; slope is ${formatNumber(selectedSlope, 2)} ft/week and Mann-Kendall p-value is ${Number.isFinite(pValue) ? formatNumber(pValue, 4) : '-'}.`
           : localRow.groundwaterDirection === 'Improving'
@@ -3792,7 +3816,9 @@
           ? `Possible groundwater rise: the plotted cleaned ward-average weekly graph has a negative linear slope, but Mann-Kendall is not statistically significant.`
           : localRow.groundwaterStatus === 'Insufficient data'
           ? `Not enough plotted cleaned weekly ward-average points are available. Points used: ${formatNumber(pointCount)}.`
-          : `Stable or mixed groundwater trend: the plotted cleaned ward-average weekly graph does not show confirmed decline.`;
+          : selectedStable
+          ? `Stable groundwater trend: selected slope is within +/-${formatNumber(LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK, 2)} ft/week.`
+          : `Mixed groundwater trend: the plotted cleaned weekly graph is neither near-flat, declining, nor improving under the selected rule.`;
 
         return {
           ...apiRow,
@@ -5495,7 +5521,7 @@
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#b91c1c"></span><span data-ward-legend-label="critical">Critical: GW Decline</span></button>
         <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#087f8c"></span><span data-ward-legend-label="rise">Groundwater Rise</span></button>
-        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#c66a00"></span><span data-ward-legend-label="stable">Not Declining / Mixed</span></button>
+        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#c66a00"></span><span data-ward-legend-label="stable">Stable</span></button>
         <div class="legend-note" data-ward-legend-note>
           Red, teal, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
         </div>
@@ -5513,7 +5539,7 @@
       const legendNote = document.querySelector('[data-ward-legend-note]');
       if (legendNote) {
         legendNote.textContent = wardAnalysisLens === 'groundwater'
-          ? 'Red, teal, and amber fills show groundwater decline, rise, and stable/mixed status. Wards without usable trend evidence are left unfilled.'
+          ? 'Red, teal, and amber fills show groundwater decline, rise, and near-flat stable status. Mixed or unclassified wards are left unfilled.'
           : `${wardAnalysisLensLabel()} is shown as ${mapLensCriticalColor()} fill. Wards not meeting this lens threshold are left unfilled.`;
       }
       document.querySelectorAll('.legend button[data-filter]').forEach((button) => {
