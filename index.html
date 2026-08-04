@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BBMP Borewell Dashboard</title>
-  <meta name="dashboard-build" content="graph-toggle-only-3cde5c4">
+  <meta name="dashboard-build" content="pumping-performance-ui-20260804">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="BBMP_Dashboard.css?v=final-critical-rise-7ef56ed">
+  <link rel="stylesheet" href="BBMP_Dashboard.css?v=pumping-performance-ui-20260804">
 </head>
 <body>
   <main class="app right-collapsed" id="app">
@@ -16,12 +16,14 @@
     <button class="collapse-toggle" id="toggleRight" title="Expand details panel" aria-label="Expand details panel">&lsaquo;</button>
 
     <aside>
-      <header>
+      <header class="brand-header">
+        <div class="brand-kicker">Groundwater operations</div>
         <h1>BBMP Borewell Dashboard</h1>
-        <p class="subhead" id="refreshStatus">Opening the dashboard starts the latest KrishiHrudaya data download.</p>
+        <div class="system-status"><span class="status-pulse"></span><p class="subhead" id="refreshStatus">Opening the dashboard starts the latest KrishiHrudaya data download.</p></div>
       </header>
 
       <section class="controls">
+        <div class="section-label">Find and inspect</div>
         <label>
           Search UID or Ward
           <input id="search" type="search" placeholder="UID, ward number, ward name">
@@ -35,7 +37,7 @@
       </section>
 
       <section class="controls qc-controls">
-        <h2>QC Filter</h2>
+        <div class="section-heading-row"><h2>Sensor quality</h2><span>Filter map and list</span></div>
         <div class="qc-filter-grid">
           <button class="active" data-qc-filter="" type="button">All</button>
           <button data-qc-filter="GOOD" type="button">Good</button>
@@ -46,6 +48,7 @@
         </div>
       </section>
 
+      <div class="section-label stats-label">Network summary</div>
       <section class="stats">
         <div class="stat">
           <strong id="totalCount">0</strong>
@@ -73,7 +76,7 @@
         </div>
         <div class="stat">
           <strong id="specificCapacityCount">0</strong>
-          <span>SC-ready Sensors</span>
+          <span>Water + Discharge</span>
         </div>
       </section>
 
@@ -82,7 +85,6 @@
           <strong id="filteredCount">0</strong>
           <span>Filtered Borewells</span>
         </div>
-        <div class="method-summary" id="methodSummary" style="display:none"></div>
         <details class="download-panel">
           <summary>Downloads and exports</summary>
           <div class="export-actions">
@@ -101,6 +103,7 @@
 
     <section class="map-wrap">
       <div id="map"></div>
+      <div class="method-summary map-analysis-control" id="methodSummary" style="display:none"></div>
       <div id="toast" class="toast"></div>
     </section>
 
@@ -197,9 +200,11 @@
     let wardLayerMode = 'qc';
     let wardIndicatorsByNo = new Map();
     const bangaloreCenter = [12.9716, 77.5946];
-    const API_BASE_URL = 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
+    const API_BASE_URL = new URLSearchParams(window.location.search).get('api')
+      || 'https://bbmp-borewell-api.vishwas-borewellworkersdev.workers.dev';
     const WARD_WEEKLY_API_VERSION = 'ww-20260722-1';
     const SPECIFIC_CAPACITY_API_VERSION = 'sc-20260717-2';
+    const PUMPING_PERFORMANCE_API_VERSION = 'pump-20260804-1';
     const map = L.map('map', { zoomControl: false }).setView(bangaloreCenter, 11);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -229,6 +234,7 @@
     let populationByWardNo = new Map();
     let populationByCanonicalName = new Map();
     let specificCapacityByWardNo = new Map();
+    let pumpingPerformanceByWardNo = new Map();
     let dashboardDataCache = new Map();
     let sharedDashboardDataCache = null;
     let loadSequence = 0;
@@ -910,21 +916,21 @@
         };
       } else if (currentDataSource === 'kh' && isGroundwaterRiseWard(critical)) {
         style = {
-          color: '#0f766e',
+          color: '#0e5e66',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#06b6d4',
-          fillOpacity: 0.62
+          fillColor: '#087f8c',
+          fillOpacity: 0.68
         };
       } else if (currentDataSource === 'kh' && key === 'stable') {
         style = {
-          color: '#a16207',
+          color: '#8a4300',
           weight: 3,
           opacity: 1,
           fill: true,
-          fillColor: '#facc15',
-          fillOpacity: 0.56
+          fillColor: '#c66a00',
+          fillOpacity: 0.62
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
@@ -1067,24 +1073,49 @@
       }
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
-        <div class="method-toggle" role="group" aria-label="Groundwater classification method">
+        <div class="map-control-heading">
+          <div><span>Groundwater view</span><strong>Ward classification</strong></div>
+          <div class="map-status-counts" aria-label="Ward status counts">
+            <button type="button" data-method-status-filter="critical" title="Filter critical wards"><i style="background:#b91c1c"></i>${formatNumber(counts.critical)}</button>
+            <button type="button" data-method-status-filter="rise" title="Filter groundwater rise wards"><i style="background:#0891b2"></i>${formatNumber(counts.rise)}</button>
+            <button type="button" data-method-status-filter="stable" title="Filter stable or mixed wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
+          </div>
+        </div>
+        <div class="method-control-grid">
           <label>
-            Classification method
+            Method
             <select data-groundwater-method-select>
               ${groundwaterMethodOptions.map((item) => `
                 <option value="${item.value}" ${item.value === groundwaterMethodMode ? 'selected' : ''}>${item.label}</option>
               `).join('')}
             </select>
           </label>
+          <div class="map-statistic-control">
+            <span>Ward level</span>
+            <div class="level-toggle" role="group" aria-label="Ward groundwater statistic">
+              <button type="button" class="${wardLevelStatistic === 'average' ? 'active' : ''}" data-global-ward-level-stat="average">Average</button>
+              <button type="button" class="${wardLevelStatistic === 'median' ? 'active' : ''}" data-global-ward-level-stat="median">Median</button>
+            </div>
+          </div>
         </div>
-        <div class="method-row"><span class="swatch" style="background:#b91c1c"></span><strong>${formatNumber(counts.critical)}</strong><span>Final critical wards shown on map</span></div>
-        <div class="method-row"><span class="swatch" style="background:#06b6d4"></span><strong>${formatNumber(counts.rise)}</strong><span>Groundwater rise wards</span></div>
-        <div class="method-row"><span class="swatch" style="background:#facc15"></span><strong>${formatNumber(counts.stable)}</strong><span>Stable / mixed wards</span></div>
-        <div class="method-note">Selected rule: ${htmlEscape(selectedMethodLabel)}. Map colours show final status after removing wards where the cleaned groundwater trend indicates rise. Wards without usable trend evidence are left unfilled.</div>
+        <div class="method-note">${htmlEscape(selectedMethodLabel)} using cleaned weekly ${wardLevelStatistic} levels. Select a count to filter the map.</div>
       `;
       els.methodSummary.querySelector('[data-groundwater-method-select]')?.addEventListener('change', (event) => {
           groundwaterMethodMode = event.target.value || 'dashboard';
           refreshGroundwaterClassificationViews();
+      });
+      els.methodSummary.querySelectorAll('[data-global-ward-level-stat]').forEach((button) => {
+        button.addEventListener('click', () => setWardLevelStatistic(button.dataset.globalWardLevelStat));
+      });
+      els.methodSummary.querySelectorAll('[data-method-status-filter]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.methodStatusFilter === wardStatusFilter);
+        button.addEventListener('click', () => {
+          wardStatusFilter = wardStatusFilter === button.dataset.methodStatusFilter ? '' : button.dataset.methodStatusFilter;
+          updateLegendFilterUi();
+          renderMethodSummary({ wards: Array.from(criticalGroundwaterByNo.values()) });
+          refreshWardPopups();
+          renderSensors();
+        });
       });
     };
 
@@ -2097,6 +2128,27 @@
       }
     };
 
+    const loadWardPumpingPerformance = async (wardNo) => {
+      const key = normalizeWardNo(wardNo);
+      if (pumpingPerformanceByWardNo.has(key)) return pumpingPerformanceByWardNo.get(key);
+      const url = `${API_BASE_URL}/api/pumping-performance/ward?ward_no=${encodeURIComponent(wardNo)}&cache_v=${PUMPING_PERFORMANCE_API_VERSION}`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          return { ward: null, sensors: [], loadError: `Pumping performance API returned HTTP ${response.status}.` };
+        }
+        const payload = await response.json();
+        pumpingPerformanceByWardNo.set(key, payload);
+        return payload;
+      } catch (error) {
+        return {
+          ward: null,
+          sensors: [],
+          loadError: error?.message || 'Pumping performance API request failed.'
+        };
+      }
+    };
+
     const buildChart = (canvasId, existing, labels, values, label, color, options = {}) => {
       if (existing) existing.destroy();
       const canvas = document.getElementById(canvasId);
@@ -2823,6 +2875,11 @@
       setSensorSectionsVisible(true);
 
       els.app.classList.remove('right-collapsed');
+      if (window.innerWidth < 1700 && !els.app.classList.contains('left-collapsed')) {
+        els.app.classList.add('left-collapsed');
+        els.app.dataset.autoCollapsedLeft = 'true';
+        els.toggleLeft.textContent = '>';
+      }
       els.toggleRight.textContent = '›';
       els.toggleRight.title = 'Collapse details panel';
       els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
@@ -3806,6 +3863,7 @@
                     return new Date(Number(value)).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                   }
                   if (options.xType === 'linear') return Number(value).toFixed(options.xDecimals ?? 2);
+                  if (options.xType === 'logarithmic') return formatNumber(value, 0);
                   return monthAxisLabel(this.getLabelForValue(value));
                 }
               }
@@ -3842,9 +3900,9 @@
                     const raw = context[0]?.raw || {};
                     return raw.label || new Date(Number(raw.x)).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
                   }
-                  if (options.xType === 'linear') {
+                  if (options.xType === 'linear' || options.xType === 'logarithmic') {
                     const raw = context[0]?.raw || {};
-                    return raw.label || `${options.xTitle || 'X'}: ${Number(raw.x).toFixed(options.xDecimals ?? 2)}`;
+                    return raw.label || `${options.xTitle || 'X'}: ${formatNumber(raw.x, options.xDecimals ?? 2)}`;
                   }
                   return context[0]?.label || '';
                 },
@@ -3990,6 +4048,8 @@
         .join('<br>');
       const capacityMissingNote = !specificCapacityData
         ? '<div class="ward-note">Specific capacity data has not loaded for this ward yet. This does not mean there are no sessions. Refresh the ward or reopen it after the API finishes loading.</div>'
+        : specificCapacityData?.deferred
+        ? '<div class="ward-note deferred-analysis-note">Specific-capacity session charts are loaded only when this tab is opened, keeping the map and ward overview responsive.</div>'
         : specificCapacityData?.loadError
         ? `<div class="ward-note">Specific capacity sessions could not be loaded from the API for this ward. This does not mean there are no sessions; it means the ward-specific capacity endpoint failed or is temporarily unavailable. Try refreshing after a few minutes, or use the Ward Excel download if it is available.<br><br>${htmlEscape(specificCapacityData.loadError)}</div>`
         : capacitySensors.length
@@ -4072,11 +4132,46 @@
         ${wardMetric('High Inverse Specific Capacity UIDs', `${formatNumber(highInverseCount)} / ${formatNumber(capacitySensors.length)}${uidChipList(highInverseSensors, highInverseUidSet)}`, highInverseCount ? 'bad' : '')}
         ${wardMetric('Confirmed Worsening UIDs', `${formatNumber(worseningCapacitySensors.length)} / ${formatNumber(capacitySensors.length)}${uidChipList(worseningCapacitySensors, worseningCapacityUidSet)}`, worseningCapacitySensors.length ? 'bad' : '')}
       ` : '';
+      const pumpingData = specificCapacityData?.pumping || {};
+      const pumpingWard = pumpingData.ward || {};
+      const pumpingSensors = pumpingData.sensors || [];
+      const pumpingStatusClass = ['High pumping stress', 'Low specific-capacity performance'].includes(pumpingWard.classification)
+        ? 'bad'
+        : pumpingWard.classification === 'Normal pumping performance'
+          ? 'good'
+          : '';
+      const keyPumpingMetrics = pumpingSensors.length ? `
+        ${wardMetric('Pumping Performance', htmlEscape(pumpingWard.classification || 'Not classified'), pumpingStatusClass)}
+        ${wardMetric('Volume-normalized Drawdown', `${formatNumber(pumpingWard.medianNormalizedDrawdownFtPerM3, 2)} ft/m3`, pumpingStatusClass)}
+        ${wardMetric('Estimated Pumped Volume', `${formatNumber(pumpingWard.totalPumpedVolumeM3, 0)} m3`)}
+      ` : '';
+      const pumpingMissingNote = pumpingData.loadError
+        ? `<div class="ward-note">Pumping-volume performance could not be loaded: ${htmlEscape(pumpingData.loadError)}</div>`
+        : !pumpingSensors.length
+          ? '<div class="ward-note">No valid pumping sessions are available for volume-normalized drawdown in this ward. A valid session needs positive duration, positive drawdown, and discharge.</div>'
+          : '';
+      const pumpingRows = pumpingSensors.map((sensor) => {
+        const alertClass = sensor.interpretation === 'High priority' ? 'critical-row'
+          : sensor.interpretation === 'High extraction' ? 'warning-row'
+            : sensor.interpretation === 'Good performer' ? 'good-row' : '';
+        return `
+          <tr class="${alertClass}">
+            <td><button type="button" class="table-uid-link" data-pumping-uid="${htmlEscape(sensor.uid)}">${htmlEscape(sensor.uid)}</button></td>
+            <td>${formatNumber(sensor.sessions)}</td>
+            <td>${formatNumber(sensor.totalPumpedVolumeM3, 0)}</td>
+            <td>${formatNumber(sensor.medianNormalizedDrawdownFtPerM3, 2)}</td>
+            <td>${formatNumber(sensor.medianSpecificCapacityScaled, 4)}</td>
+            <td>${formatMotorHp(sensor.motorHp)}</td>
+            <td><span class="performance-badge ${alertClass}">${htmlEscape(sensor.interpretation || '-')}</span></td>
+          </tr>
+        `;
+      }).join('');
 
       return `
         <nav class="ward-tabs" aria-label="Ward detail sections">
           <button type="button" class="active" data-ward-tab="overview">Overview</button>
           <button type="button" data-ward-tab="groundwater">Groundwater Trend</button>
+          <button type="button" data-ward-tab="pumping">Pumping Performance</button>
           <button type="button" data-ward-tab="capacity">Specific Capacity</button>
           <button type="button" data-ward-tab="uids">UID Charts</button>
           <button type="button" data-ward-tab="downloads">Downloads</button>
@@ -4091,7 +4186,7 @@
             ${wardMetric('GOOD Sensor %', goodPercent)}
             ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
             ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
-            ${keyCapacityMetrics}
+            ${keyPumpingMetrics}
           </section>
           ${dropNote}
           ${omittedNote}
@@ -4099,7 +4194,49 @@
             <h3>Calculation Notes</h3>
             <p><strong>Specific Capacity</strong> = Lowest discharge during pumping period / Drawdown.</p>
             <p><strong>Inverse Specific Capacity</strong> = Drawdown / Lowest discharge during pumping period.</p>
+            <p><strong>Estimated Pumped Volume</strong> = Average session discharge x pumping duration. Minimum discharge is used only when average discharge is unavailable.</p>
+            <p><strong>Volume-normalized Drawdown</strong> = Drawdown / Estimated pumped volume. Higher values indicate a larger water-level response per cubic metre extracted.</p>
             <p>Groundwater decline uses cleaned weekly water-level readings; positive slope means water level below surface is increasing, which indicates decline.</p>
+          </section>
+        </section>
+        <section class="ward-tab-panel" data-ward-panel="pumping">
+          <section class="ward-explain pumping-spotlight">
+            <div class="section-head">
+              <div>
+                <h3>Pumping Performance</h3>
+                <p>Combines pumping duration, discharge, and drawdown to compare how strongly each borewell responds per cubic metre extracted.</p>
+              </div>
+              ${pumpingWard.classification ? `<span class="performance-badge ${pumpingStatusClass}">${htmlEscape(pumpingWard.classification)}</span>` : ''}
+            </div>
+            ${pumpingSensors.length ? `
+              <div class="ward-summary-grid compact pumping-summary-grid">
+                ${wardMetric('Borewells Analysed', formatNumber(pumpingWard.borewells))}
+                ${wardMetric('Valid Pumping Sessions', formatNumber(pumpingWard.totalSessions))}
+                ${wardMetric('HP Coverage', `${formatNumber(pumpingWard.borewellsWithHp)} of ${formatNumber(pumpingWard.borewells)}`)}
+                ${wardMetric('Estimated Pumped Volume', `${formatNumber(pumpingWard.totalPumpedVolumeM3, 0)} m3`)}
+                ${wardMetric('Median UID Volume', `${formatNumber(pumpingWard.medianUidPumpedVolumeM3, 0)} m3`)}
+                ${wardMetric('Median Drawdown per m3', `${formatNumber(pumpingWard.medianNormalizedDrawdownFtPerM3, 2)} ft/m3`, pumpingStatusClass)}
+                ${wardMetric('Median Specific Capacity (x10^-6 m2/s)', formatNumber(pumpingWard.medianSpecificCapacityScaled, 4))}
+                ${wardMetric('High-priority UIDs', formatNumber(pumpingWard.highPriorityUids), Number(pumpingWard.highPriorityUids) > 0 ? 'bad' : '')}
+                ${wardMetric('High-extraction UIDs', formatNumber(pumpingWard.highExtractionUids))}
+              </div>
+              <div class="mini-chart-wrap pumping-chart-wrap">
+                <button class="mini-chart-expand chart-expand" data-chart-id="wardPumpingChart" data-chart-title="Ward Pumping Performance" type="button">Expand</button>
+                <canvas id="wardPumpingChart"></canvas>
+              </div>
+              <div class="performance-table-wrap">
+                <table class="performance-table">
+                  <thead><tr><th>UID</th><th>Sessions</th><th>Volume (m3)</th><th>Drawdown / m3</th><th>Specific Capacity (x10^-6 m2/s)</th><th>Motor</th><th>Screening Result</th></tr></thead>
+                  <tbody>${pumpingRows}</tbody>
+                </table>
+              </div>
+              <div class="methodology-strip">
+                <p><strong>Volume:</strong> ${htmlEscape(pumpingData.method?.volume || '')}</p>
+                <p><strong>Normalized drawdown:</strong> ${htmlEscape(pumpingData.method?.normalizedDrawdown || '')}</p>
+                <p><strong>Screening:</strong> ${htmlEscape(pumpingData.method?.classification || '')}</p>
+              </div>
+            ` : ''}
+            ${pumpingMissingNote}
           </section>
         </section>
         <section class="ward-tab-panel" data-ward-panel="capacity">
@@ -4506,9 +4643,80 @@
       });
     };
 
+    const renderWardPumpingChart = (pumpingData) => {
+      const canvas = document.getElementById('wardPumpingChart');
+      const sensorsWithMetrics = (pumpingData?.sensors || []).filter((sensor) => (
+        Number.isFinite(Number(sensor.totalPumpedVolumeM3))
+        && Number(sensor.totalPumpedVolumeM3) > 0
+        && Number.isFinite(Number(sensor.medianNormalizedDrawdownFtPerM3))
+      ));
+      if (!canvas || !sensorsWithMetrics.length) return;
+      const groups = [
+        { label: 'High priority', color: '#b91c1c' },
+        { label: 'High extraction', color: '#c2410c' },
+        { label: 'Good performer', color: '#047857' },
+        { label: 'Moderate / normal', color: '#2563eb' }
+      ];
+      canvas._chart = renderWardLineChart(canvas, [], groups.map((group) => ({
+        label: group.label,
+        data: sensorsWithMetrics
+          .filter((sensor) => sensor.interpretation === group.label)
+          .map((sensor) => ({
+            x: Number(sensor.totalPumpedVolumeM3),
+            y: Number(sensor.medianNormalizedDrawdownFtPerM3),
+            label: `UID ${sensor.uid}`
+          })),
+        borderColor: group.color,
+        pointBackgroundColor: group.color,
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 9,
+        showLine: false,
+        unit: 'ft/m3'
+      })), {
+        chartType: 'scatter',
+        showLine: false,
+        reverseY: false,
+        xType: 'logarithmic',
+        xTitle: 'Estimated Pumped Volume (m3, log scale)',
+        yTitle: 'Median Volume-normalized Drawdown (ft/m3)',
+        unit: 'ft/m3',
+        autoSkipXLabels: true,
+        maxTicksLimit: 10,
+        bottomPadding: 20
+      });
+    };
+
+    const loadActiveWardSpecificCapacity = async () => {
+      if (!activeWardProps || activeSpecificCapacityData?.deferred !== true) return;
+      const wardNo = normalizeWardNo(wardNumber(activeWardProps));
+      const pumping = activeSpecificCapacityData.pumping;
+      activeSpecificCapacityData = { ...activeSpecificCapacityData, deferred: 'loading' };
+      const activePanel = document.querySelector('[data-ward-panel="capacity"]');
+      if (activePanel) activePanel.innerHTML = '<div class="empty-chart analysis-loading">Loading specific-capacity sessions and trend diagnostics...</div>';
+      const capacity = await loadWardSpecificCapacity(wardNo);
+      if (!activeWardProps || normalizeWardNo(wardNumber(activeWardProps)) !== wardNo) return;
+      activeSpecificCapacityData = { ...capacity, pumping };
+      if (hasValidSpecificCapacity(capacity.ward)) {
+        specificCapacityByWardNo.set(wardNo, capacity.ward);
+        activeWardProps._specificCapacity = capacity.ward;
+      }
+      els.wardDetailPanel.innerHTML = buildWardDetailHtml(
+        activeWardProps,
+        activeWardData,
+        activeWardSensors,
+        activeSpecificCapacityData
+      );
+      renderWardDetailCharts(activeWardData, activeSpecificCapacityData);
+      refreshWardPopups();
+      document.querySelector('[data-ward-tab="capacity"]')?.click();
+    };
+
     const renderWardDetailCharts = (wardData, specificCapacityData = null) => {
       clearWardInlineCharts();
       renderSpecificCapacityCharts(specificCapacityData);
+      renderWardPumpingChart(specificCapacityData?.pumping);
       if (!wardData) return;
       const wardCanvas = document.getElementById('wardWeeklyChart');
       if (wardCanvas) {
@@ -4825,6 +5033,9 @@
           document.querySelectorAll('.ward-tab-panel').forEach((panel) => {
             panel.classList.toggle('active', panel.dataset.wardPanel === target);
           });
+          if (target === 'capacity' && activeSpecificCapacityData?.deferred === true) {
+            loadActiveWardSpecificCapacity();
+          }
           window.setTimeout(() => wardInlineCharts.forEach((chart) => chart.resize()), 80);
           refreshFullscreenChart();
         });
@@ -4866,6 +5077,11 @@
 
       setSensorSectionsVisible(false);
       els.app.classList.remove('right-collapsed', 'chart-wide', 'critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+      if (window.innerWidth < 1700 && !els.app.classList.contains('left-collapsed')) {
+        els.app.classList.add('left-collapsed');
+        els.app.dataset.autoCollapsedLeft = 'true';
+        els.toggleLeft.textContent = '>';
+      }
       els.app.classList.toggle('critical-ward-selected', currentDataSource === 'kh' && isGroundwaterActionWard(criticalGw));
       els.app.classList.toggle('screening-ward-selected', currentDataSource === 'kh' && isLinearMannKendallScreeningWard(criticalGw));
       els.toggleRight.textContent = '›';
@@ -4947,21 +5163,14 @@
           return;
         }
 
-        const capacityPayload =
-          await loadWardSpecificCapacity(selectedWardNo);
+        const pumpingPayload = await loadWardPumpingPerformance(selectedWardNo);
+        const capacityPayload = { ward: null, sensors: [], deferred: true, pumping: pumpingPayload };
 
         if (
           currentSelectionSequence !== selectionSequence ||
           focusedWardNo !== selectedWardNo
         ) {
           return;
-        }
-        if (hasValidSpecificCapacity(capacityPayload.ward)) {
-          specificCapacityByWardNo.set(normalizeWardNo(selectedWardNo), capacityPayload.ward);
-          feature.properties._specificCapacity = capacityPayload.ward;
-        } else {
-          specificCapacityByWardNo.delete(capacityKey);
-          delete feature.properties._specificCapacity;
         }
         const shapeLayer = wardLayers.find((layer) => layer.feature === feature);
         if (shapeLayer) {
@@ -5008,8 +5217,8 @@
           wardWeeklyByNo.set(selectedWardNo, wardData);
         }
 
-        const capacityPayload =
-          await loadWardSpecificCapacity(selectedWardNo);
+        const pumpingPayload = await loadWardPumpingPerformance(selectedWardNo);
+        const capacityPayload = { ward: null, sensors: [], deferred: true, pumping: pumpingPayload };
 
         if (
           currentSelectionSequence !== selectionSequence ||
@@ -5062,10 +5271,10 @@
         <button class="legend-row" data-filter="none" type="button"><span class="dot" style="background:#d12f2f"></span>No data</button>
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#b91c1c"></span>Critical: GW Decline</button>
-        <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#06b6d4"></span>Groundwater Rise</button>
-        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#facc15"></span>Stable / Mixed</button>
+        <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#087f8c"></span>Groundwater Rise</button>
+        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#c66a00"></span>Stable / Mixed</button>
         <div class="legend-note">
-          Red, green, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
+          Red, teal, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
         </div>
       `;
       return div;
@@ -5118,12 +5327,18 @@
           clearWardInlineCharts();
           closeChartFullscreen();
 
-          els.app.classList.remove(
+        els.app.classList.remove(
             'critical-ward-selected',
             'screening-ward-selected',
             'unverified-ward-selected',
-            'chart-wide'
-          );
+          'chart-wide'
+        );
+
+        if (els.app.dataset.autoCollapsedLeft === 'true') {
+          els.app.classList.remove('left-collapsed');
+          delete els.app.dataset.autoCollapsedLeft;
+          els.toggleLeft.textContent = '<';
+        }
 
           els.wardDetailPanel.innerHTML = '';
           els.wardDetailPanel.style.display = 'none';
@@ -5214,6 +5429,12 @@
       if (event.target.closest('#wardDownloadNotUsable')) {
         window.open(`${API_BASE_URL}/api/qc/not-usable-sensors.xlsx`, '_blank', 'noopener');
       }
+    });
+    document.addEventListener('click', (event) => {
+      const uidButton = event.target.closest('[data-pumping-uid]');
+      if (!uidButton) return;
+      const sensor = sensors.find((item) => String(item.uid) === String(uidButton.dataset.pumpingUid));
+      if (sensor) selectSensor(sensor, true);
     });
     document.addEventListener('click', (event) => {
       const button = event.target.closest('#toggleGroundwaterOutliers, [data-toggle-groundwater-outliers]');
