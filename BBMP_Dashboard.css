@@ -1896,6 +1896,10 @@ button.primary:hover:not(:disabled) {
   flex: 1;
 }
 
+.method-control-grid > label:nth-child(2) {
+  flex: 1.35;
+}
+
 .method-control-grid select {
   min-height: 32px;
   padding: 5px 8px;
@@ -2035,6 +2039,7 @@ button.primary:hover:not(:disabled) {
 .performance-badge {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   width: fit-content;
   min-height: 24px;
   padding: 3px 8px;
@@ -2045,6 +2050,7 @@ button.primary:hover:not(:disabled) {
   font-size: 10px;
   font-weight: 800;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .performance-badge.bad,
@@ -2187,6 +2193,44 @@ button.primary:hover:not(:disabled) {
   right: 14px;
 }
 
+.analysis-population-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.analysis-population-strip > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 9px 11px;
+  border: 1px solid #cbd8e6;
+  border-radius: 6px;
+  background: #f7fafc;
+}
+
+.analysis-population-strip strong {
+  min-width: 32px;
+  color: #17212b;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.analysis-population-strip span {
+  color: #526477;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.population-note {
+  border-color: #b9d4e7;
+  background: #edf7fc;
+  color: #294d63;
+}
+
 @media (max-width: 1280px) {
   .app,
   .app.chart-wide {
@@ -2299,6 +2343,10 @@ button.primary:hover:not(:disabled) {
   .ward-summary-grid,
   .ward-summary-grid.compact,
   .pumping-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-population-strip {
     grid-template-columns: 1fr;
   }
 }
