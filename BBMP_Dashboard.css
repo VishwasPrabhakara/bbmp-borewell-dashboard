@@ -1820,11 +1820,11 @@ button.primary:hover:not(:disabled) {
   top: 14px;
   left: 58px;
   z-index: 850;
-  width: min(560px, calc(100% - 290px));
-  min-width: 430px;
-  padding: 10px 12px;
+  width: min(640px, calc(100% - 310px));
+  min-width: 460px;
+  padding: 12px;
   border: 1px solid rgba(134, 151, 165, 0.65);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow);
   backdrop-filter: blur(8px);
@@ -1889,21 +1889,35 @@ button.primary:hover:not(:disabled) {
 
 .method-control-grid {
   align-items: end;
-  gap: 9px;
+  gap: 10px;
 }
 
-.method-control-grid > label {
+.method-field {
   flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
 }
 
-.method-control-grid > label:nth-child(2) {
+.method-field-wide {
   flex: 1.35;
 }
 
 .method-control-grid select {
-  min-height: 32px;
-  padding: 5px 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 30px 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
   font-size: 12px;
+  font-weight: 800;
+  text-transform: none;
 }
 
 .map-statistic-control {

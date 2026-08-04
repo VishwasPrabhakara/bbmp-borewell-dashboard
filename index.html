@@ -328,6 +328,8 @@
     const sourceDisplayName = () => currentDataSource === 'vendor' ? 'Nimblevision' : 'KrishiHrudaya';
     const LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK = 0.1;
     const TREND_SIGNIFICANCE_ALPHA = 0.05;
+    const GROUNDWATER_MIN_SLOPE_WEEKS = 4;
+    const GROUNDWATER_MIN_MK_WEEKS = 8;
 
     const dataCategoryLabels = {
       both: 'Water  Level + Discharge',
@@ -648,13 +650,7 @@
       return criticalForWardNo(wardNo)?.updateReason || 'Groundwater status uses the selected cleaned weekly trend method.';
     };
 
-    const mapLensCriticalColor = () => ({
-      groundwater: '#b91c1c',
-      extraction: '#6d28d9',
-      consumption: '#b45309',
-      specific_capacity: '#0369a1',
-      pumping_stress: '#be185d'
-    }[wardAnalysisLens] || '#b91c1c');
+    const mapLensCriticalColor = () => '#b91c1c';
 
     const mapLensCriticalLabel = () => ({
       groundwater: 'Critical: GW Decline',
@@ -1242,8 +1238,8 @@
           </div>
         </div>
         <div class="method-control-grid">
-          <label>
-            Analysis lens
+          <label class="method-field method-field-primary">
+            <span>Analysis lens</span>
             <select data-analysis-lens-select>
               ${wardAnalysisLensOptions.map((item) => `
                 <option value="${item.value}" ${item.value === wardAnalysisLens ? 'selected' : ''}>${item.label}</option>
@@ -1251,8 +1247,8 @@
             </select>
           </label>
           ${wardAnalysisLens === 'groundwater' ? `
-            <label>
-              Groundwater method
+            <label class="method-field method-field-wide">
+              <span>Groundwater method</span>
               <select data-groundwater-method-select>
                 ${groundwaterMethodOptions.map((item) => `
                   <option value="${item.value}" ${item.value === groundwaterMethodMode ? 'selected' : ''}>${item.label}</option>
@@ -2718,24 +2714,27 @@
       const mk = Number(fit.mannKendallS);
       const pValue = Number(fit.mannKendallPValue);
       const pointCount = Number(fit.pointCount || 0);
-      const hasEnough = pointCount >= 8 && Number.isFinite(pValue) && Number.isFinite(mk);
-      const linearCritical = hasEnough
+      const hasSlopeWeeks = pointCount >= GROUNDWATER_MIN_SLOPE_WEEKS;
+      const hasMannKendallWeeks = pointCount >= GROUNDWATER_MIN_MK_WEEKS && Number.isFinite(pValue) && Number.isFinite(mk);
+      const linearCritical = hasSlopeWeeks
         && Number.isFinite(linearSlope)
         && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+        && hasMannKendallWeeks
         && mk > 0
         && pValue <= TREND_SIGNIFICANCE_ALPHA;
-      const theilCritical = hasEnough
+      const theilCritical = hasSlopeWeeks
         && Number.isFinite(theilSlope)
         && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK
+        && hasMannKendallWeeks
         && mk > 0
         && pValue <= TREND_SIGNIFICANCE_ALPHA;
-      const linearMethodCritical = hasEnough
+      const linearMethodCritical = hasSlopeWeeks
         && Number.isFinite(linearSlope)
         && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
-      const theilMethodCritical = hasEnough
+      const theilMethodCritical = hasSlopeWeeks
         && Number.isFinite(theilSlope)
         && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
-      const mannKendallMethodCritical = hasEnough
+      const mannKendallMethodCritical = hasMannKendallWeeks
         && mk > 0
         && pValue <= TREND_SIGNIFICANCE_ALPHA;
       const localCritical = {
@@ -2752,8 +2751,8 @@
       const selectedMethodName = groundwaterMethodLabel();
       const linearRise = Number.isFinite(linearSlope) && linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
       const significant = Number.isFinite(pValue) && pValue <= TREND_SIGNIFICANCE_ALPHA;
-      const improving = hasEnough && linearRise && mk < 0;
-      const insufficient = !hasEnough;
+      const improving = hasSlopeWeeks && linearRise && (!hasMannKendallWeeks || mk < 0);
+      const insufficient = !hasSlopeWeeks;
       const oldUnverified = base?.oldConsumptionNoGroundwaterData === 'Yes' && insufficient;
       const statLabel = levelConfig.noteLabel;
       let groundwaterStatus = selectedCritical ? 'Critical' : insufficient ? 'Insufficient data' : 'Normal';
@@ -3603,7 +3602,7 @@
     const pointCount = Number(fit.pointCount || 0);
 
     const enoughData =
-      pointCount >= 8 &&
+      pointCount >= GROUNDWATER_MIN_SLOPE_WEEKS &&
       Number.isFinite(sen) &&
       Number.isFinite(linear) &&
       Number.isFinite(mk) &&
@@ -3706,9 +3705,6 @@
       criticalApiPayload = { wards: [] }
     ) => {
       if (currentDataSource !== 'kh') return { wards: [] };
-      if (Array.isArray(criticalApiPayload?.wards) && criticalApiPayload.wards.length) {
-        return criticalApiPayload;
-      }
 
       const localPayload = buildLocalCriticalGroundwater(wardWeeklyPayload);
       const apiByWard = new Map((criticalApiPayload?.wards || []).map((item) => [
@@ -3726,23 +3722,16 @@
         const mk = Number(localRow.mannKendallS);
         const pValue = Number(localRow.mannKendallPValue);
         const pointCount = Number(localRow.pointCount || 0);
-        const hasEnough = pointCount >= 8 && Number.isFinite(pValue) && Number.isFinite(mk);
-        const linearCritical = hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
-        const theilCritical = hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
-        const officialLinearCritical = apiRow.linearMannKendallCritical === 'Yes'
-          ? true
-          : apiRow.linearMannKendallCritical === 'No'
-          ? false
-          : linearCritical;
-        const officialTheilCritical = apiRow.theilSenMannKendallCritical === 'Yes'
-          ? true
-          : apiRow.theilSenMannKendallCritical === 'No'
-          ? false
-          : theilCritical;
+        const hasSlopeWeeks = pointCount >= GROUNDWATER_MIN_SLOPE_WEEKS;
+        const hasMannKendallWeeks = pointCount >= GROUNDWATER_MIN_MK_WEEKS && Number.isFinite(pValue) && Number.isFinite(mk);
+        const linearCritical = hasSlopeWeeks && hasMannKendallWeeks && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
+        const theilCritical = hasSlopeWeeks && hasMannKendallWeeks && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA;
+        const officialLinearCritical = linearCritical;
+        const officialTheilCritical = theilCritical;
         const fallbackCritical = {
-          linearMethodCritical: apiRow.linearMethodCritical || (hasEnough && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
-          theilSenMethodCritical: apiRow.theilSenMethodCritical || (hasEnough && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No'),
-          mannKendallMethodCritical: apiRow.mannKendallMethodCritical || (hasEnough && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No'),
+          linearMethodCritical: hasSlopeWeeks && Number.isFinite(linearSlope) && linearSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+          theilSenMethodCritical: hasSlopeWeeks && Number.isFinite(theilSlope) && theilSlope > LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK ? 'Yes' : 'No',
+          mannKendallMethodCritical: hasMannKendallWeeks && mk > 0 && pValue <= TREND_SIGNIFICANCE_ALPHA ? 'Yes' : 'No',
           linearMannKendallCritical: officialLinearCritical ? 'Yes' : 'No',
           theilSenMannKendallCritical: officialTheilCritical ? 'Yes' : 'No',
           linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? linearSlope : null,
