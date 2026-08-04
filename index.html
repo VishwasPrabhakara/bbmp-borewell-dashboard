@@ -437,9 +437,22 @@
       && Number.isFinite(Number(value))
     );
 
+    const groundwaterTrendPointCount = (critical = {}) => {
+      const value = Number(
+        critical?.pointCount
+        ?? critical?.usableWeeklyValues
+        ?? critical?.weeklyPointsUsed
+        ?? 0
+      );
+      return Number.isFinite(value) ? value : 0;
+    };
+
     const hasGroundwaterTrendEvidence = (critical) => (
-      hasNumericTrendValue(critical?.senSlopeFtPerWeek)
-      || hasNumericTrendValue(critical?.linearSlopeFtPerWeek)
+      groundwaterTrendPointCount(critical) >= GROUNDWATER_MIN_SLOPE_WEEKS
+      && (
+        hasNumericTrendValue(critical?.senSlopeFtPerWeek)
+        || hasNumericTrendValue(critical?.linearSlopeFtPerWeek)
+      )
     );
 
     const groundwaterMethodOptions = [
@@ -480,6 +493,7 @@
     });
 
     const selectedMethodIsCritical = (critical = {}, mode = groundwaterMethodMode) => {
+      if (!hasGroundwaterTrendEvidence(critical)) return false;
       const votes = methodVotesForCritical(critical);
       if (mode === 'dashboard') {
         return isYes(critical.dashboardAction) || isGroundwaterCriticalWard(critical);
@@ -537,6 +551,16 @@
 
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
+      const hasTrendEvidence = hasGroundwaterTrendEvidence(critical);
+      if (!hasTrendEvidence) {
+        return {
+          ...critical,
+          groundwaterStatus: 'Insufficient data',
+          groundwaterDirection: 'Not computed',
+          dashboardAction: 'No',
+          dashboardMapCategory: 'Insufficient groundwater data'
+        };
+      }
       if (critical.groundwaterRiseOverride === 'Yes') {
         return {
           ...critical,
@@ -571,12 +595,12 @@
       const selectedStable = isSelectedGroundwaterStable(critical);
       return {
         ...critical,
-        groundwaterStatus: hasGroundwaterTrendEvidence(critical) ? 'Normal' : 'Insufficient data',
-        groundwaterDirection: hasGroundwaterTrendEvidence(critical)
+        groundwaterStatus: hasTrendEvidence ? 'Normal' : 'Insufficient data',
+        groundwaterDirection: hasTrendEvidence
           ? critical.groundwaterDirection === 'Improving' ? 'Improving' : selectedStable ? 'Stable' : 'Mixed / not classified'
           : 'Not computed',
         dashboardAction: 'No',
-        dashboardMapCategory: !hasGroundwaterTrendEvidence(critical)
+        dashboardMapCategory: !hasTrendEvidence
           ? 'Insufficient groundwater data'
           : critical.dashboardMapCategory === 'Confirmed groundwater rise'
           ? 'Confirmed groundwater rise'
@@ -608,17 +632,17 @@
       if (wardAnalysisLens === 'extraction') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.criticalByExtraction ? 'critical' : 'stable';
+        return pumping.criticalByExtraction ? 'critical' : 'normal';
       }
       if (wardAnalysisLens === 'specific_capacity') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.criticalBySpecificCapacity ? 'critical' : 'stable';
+        return pumping.criticalBySpecificCapacity ? 'critical' : 'normal';
       }
       if (wardAnalysisLens === 'pumping_stress') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.highNormalizedDrawdown ? 'critical' : 'stable';
+        return pumping.highNormalizedDrawdown ? 'critical' : 'normal';
       }
       return wardStatusKey(criticalForWardNo(wardNo));
     };
@@ -1228,7 +1252,7 @@
                       : ward.criticalBySpecificCapacity
                 )).length,
             rise: 0,
-            stable: wardAnalysisLens === 'consumption'
+            normal: wardAnalysisLens === 'consumption'
               ? 0
               : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => !(
                   wardAnalysisLens === 'extraction'
@@ -1244,7 +1268,7 @@
         ? ['critical', 'rise', 'stable']
         : wardAnalysisLens === 'consumption'
           ? ['critical']
-          : ['critical', 'stable'];
+          : ['critical', 'normal'];
       if (wardStatusFilter && !availableStatusKeys.includes(wardStatusFilter)) {
         wardStatusFilter = '';
         refreshWardPopups();
@@ -1270,7 +1294,7 @@
               <button type="button" data-method-status-filter="stable" title="Filter near-flat stable wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
             ` : ''}
             ${wardAnalysisLens !== 'groundwater' && wardAnalysisLens !== 'consumption' ? `
-              <button type="button" data-method-status-filter="stable" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.stable)}</button>
+              <button type="button" data-method-status-filter="normal" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.normal)}</button>
             ` : ''}
           </div>
         </div>
@@ -2781,7 +2805,8 @@
         linearMannKendallCritical: linearCritical ? 'Yes' : 'No',
         theilSenMannKendallCritical: theilCritical ? 'Yes' : 'No',
         linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? linearSlope : null,
-        senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null
+        senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null,
+        pointCount
       };
       const selectedCritical = selectedMethodIsCritical(localCritical);
       const selectedSlope = selectedMethodSlope(localCritical);
@@ -3777,7 +3802,8 @@
           linearMannKendallCritical: officialLinearCritical ? 'Yes' : 'No',
           theilSenMannKendallCritical: officialTheilCritical ? 'Yes' : 'No',
           linearSlopeFtPerWeek: Number.isFinite(linearSlope) ? linearSlope : null,
-          senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null
+          senSlopeFtPerWeek: Number.isFinite(theilSlope) ? theilSlope : null,
+          pointCount
         };
         const selectedCritical = selectedMethodIsCritical(fallbackCritical);
         const selectedSlope = selectedMethodSlope(fallbackCritical);
