@@ -27,7 +27,19 @@
   color: #fff;
   font-weight: 700;
 }
+.map-analysis-control {
+  width: min(500px, calc(100% - 310px));
+  min-width: 380px;
+  padding: 10px;
+}
 
+.method-field-wide {
+  flex: 1.15;
+}
+
+.map-statistic-control {
+  min-width: 142px;
+}
     .app {
       height: 100vh;
       min-height: 720px;
