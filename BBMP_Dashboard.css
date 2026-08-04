@@ -1832,9 +1832,9 @@ button.primary:hover:not(:disabled) {
   top: 14px;
   left: 58px;
   z-index: 850;
-  width: min(640px, calc(100% - 310px));
-  min-width: 460px;
-  padding: 12px;
+  width: min(500px, calc(100% - 310px));
+  min-width: 380px;
+  padding: 10px;
   border: 1px solid rgba(134, 151, 165, 0.65);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
@@ -1916,7 +1916,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .method-field-wide {
-  flex: 1.35;
+  flex: 1.15;
 }
 
 .method-control-grid select {
@@ -1933,7 +1933,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .map-statistic-control {
-  min-width: 180px;
+  min-width: 142px;
   align-items: stretch;
   flex-direction: column;
   gap: 5px;

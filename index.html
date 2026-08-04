@@ -596,13 +596,19 @@
         return isPreviousConsumptionCriticalWard(wardNo) ? 'critical' : '';
       }
       if (wardAnalysisLens === 'extraction') {
-        return pumpingWardSummaryForNo(wardNo)?.criticalByExtraction ? 'critical' : '';
+        const pumping = pumpingWardSummaryForNo(wardNo);
+        if (!pumping) return '';
+        return pumping.criticalByExtraction ? 'critical' : 'stable';
       }
       if (wardAnalysisLens === 'specific_capacity') {
-        return pumpingWardSummaryForNo(wardNo)?.criticalBySpecificCapacity ? 'critical' : '';
+        const pumping = pumpingWardSummaryForNo(wardNo);
+        if (!pumping) return '';
+        return pumping.criticalBySpecificCapacity ? 'critical' : 'stable';
       }
       if (wardAnalysisLens === 'pumping_stress') {
-        return pumpingWardSummaryForNo(wardNo)?.highNormalizedDrawdown ? 'critical' : '';
+        const pumping = pumpingWardSummaryForNo(wardNo);
+        if (!pumping) return '';
+        return pumping.highNormalizedDrawdown ? 'critical' : 'stable';
       }
       return wardStatusKey(criticalForWardNo(wardNo));
     };
@@ -1206,11 +1212,23 @@
                       : ward.criticalBySpecificCapacity
                 )).length,
             rise: 0,
-            stable: 0
+            stable: wardAnalysisLens === 'consumption'
+              ? 0
+              : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => !(
+                  wardAnalysisLens === 'extraction'
+                    ? ward.criticalByExtraction
+                    : wardAnalysisLens === 'pumping_stress'
+                      ? ward.highNormalizedDrawdown
+                      : ward.criticalBySpecificCapacity
+                )).length
           };
       const selectedMethodLabel = groundwaterMethodLabel();
       latestWardStatusCounts = counts;
-      const availableStatusKeys = wardAnalysisLens === 'groundwater' ? ['critical', 'rise', 'stable'] : ['critical'];
+      const availableStatusKeys = wardAnalysisLens === 'groundwater'
+        ? ['critical', 'rise', 'stable']
+        : wardAnalysisLens === 'consumption'
+          ? ['critical']
+          : ['critical', 'stable'];
       if (wardStatusFilter && !availableStatusKeys.includes(wardStatusFilter)) {
         wardStatusFilter = '';
         refreshWardPopups();
@@ -1233,7 +1251,10 @@
             <button type="button" data-method-status-filter="critical" title="Filter critical wards"><i style="background:${mapLensCriticalColor()}"></i>${formatNumber(counts.critical)}</button>
             ${wardAnalysisLens === 'groundwater' ? `
               <button type="button" data-method-status-filter="rise" title="Filter groundwater rise wards"><i style="background:#0891b2"></i>${formatNumber(counts.rise)}</button>
-              <button type="button" data-method-status-filter="stable" title="Filter stable or mixed wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
+              <button type="button" data-method-status-filter="stable" title="Filter not-declining or mixed wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
+            ` : ''}
+            ${wardAnalysisLens !== 'groundwater' && wardAnalysisLens !== 'consumption' ? `
+              <button type="button" data-method-status-filter="stable" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.stable)}</button>
             ` : ''}
           </div>
         </div>
@@ -5474,7 +5495,7 @@
         <div class="legend-title legend-title-spaced">Ward status</div>
         <button class="legend-row" data-ward-filter="critical" type="button"><span class="swatch" style="background:#b91c1c"></span><span data-ward-legend-label="critical">Critical: GW Decline</span></button>
         <button class="legend-row" data-ward-filter="rise" type="button"><span class="swatch" style="background:#087f8c"></span><span data-ward-legend-label="rise">Groundwater Rise</span></button>
-        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#c66a00"></span><span data-ward-legend-label="stable">Stable / Mixed</span></button>
+        <button class="legend-row" data-ward-filter="stable" type="button"><span class="swatch" style="background:#c66a00"></span><span data-ward-legend-label="stable">Not Declining / Mixed</span></button>
         <div class="legend-note" data-ward-legend-note>
           Red, teal, and amber fills show final mapped groundwater status. Wards without usable trend evidence are left unfilled.
         </div>
