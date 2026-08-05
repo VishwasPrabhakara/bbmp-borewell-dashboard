@@ -1089,39 +1089,46 @@
       updateClearSelectionButton();
       refreshWardPopups();
       renderSensors();
-      els.app.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
+      els.app?.classList.remove('critical-ward-selected', 'screening-ward-selected', 'unverified-ward-selected');
       setSensorSectionsVisible(true);
 
-      els.app.classList.remove('right-collapsed');
-      if (window.innerWidth < 1700 && !els.app.classList.contains('left-collapsed')) {
-        els.app.classList.add('left-collapsed');
-        els.app.dataset.autoCollapsedLeft = 'true';
-        els.toggleLeft.textContent = '>';
+      els.app?.classList.remove('right-collapsed');
+      if (window.innerWidth < 1700 && !els.app?.classList.contains('left-collapsed')) {
+        els.app?.classList.add('left-collapsed');
+        if (els.app) els.app.dataset.autoCollapsedLeft = 'true';
+        if (els.toggleLeft) els.toggleLeft.textContent = '>';
       }
-      els.toggleRight.textContent = '›';
-      els.toggleRight.title = 'Collapse details panel';
-      els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
+      if (els.toggleRight) {
+        els.toggleRight.textContent = '›';
+        els.toggleRight.title = 'Collapse details panel';
+        els.toggleRight.setAttribute('aria-label', els.toggleRight.title);
+      }
 
-      els.detailTitle.textContent = sensor.uid;
-      els.detailSubhead.textContent = sensor.hasData
-        ? `Water-level history loaded from the ${sourceDisplayName()} data source.`
-        : `This borewell has no water-level rows in the ${sourceDisplayName()} data source.`;
-      els.detailUid.textContent = sensor.uid;
-      els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
-      els.detailWardName.textContent = sensor.wardName || 'Not matched';
-      els.detailMotorHp.textContent = formatMotorHp(sensor.motorHp);
-      els.detailBorewellDepth.textContent = formatDepth(sensor.borewellDepth);
-      els.detailLatLon.textContent = hasValidLocation(sensor)
-        ? `${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}`
-        : 'Location missing';
-      els.detailFirstData.textContent = formatDateTime(sensor.firstDataAt);
-      els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
-      els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
-      els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'] || dataCategoryLabels.none;
+      if (els.detailTitle) els.detailTitle.textContent = sensor.uid;
+      if (els.detailSubhead) {
+        els.detailSubhead.textContent = sensor.hasData
+          ? `Water-level history loaded from the ${sourceDisplayName()} data source.`
+          : `This borewell has no water-level rows in the ${sourceDisplayName()} data source.`;
+      }
+      if (els.detailUid) els.detailUid.textContent = sensor.uid;
+      if (els.detailWardNo) els.detailWardNo.textContent = sensor.wardNo || 'Not matched';
+      if (els.detailWardName) els.detailWardName.textContent = sensor.wardName || 'Not matched';
+      if (els.detailMotorHp) els.detailMotorHp.textContent = formatMotorHp(sensor.motorHp);
+      if (els.detailBorewellDepth) els.detailBorewellDepth.textContent = formatDepth(sensor.borewellDepth);
+      if (els.detailLatLon) {
+        els.detailLatLon.textContent = hasValidLocation(sensor)
+          ? `${Number(sensor.lat).toFixed(6)}, ${Number(sensor.lng).toFixed(6)}`
+          : 'Location missing';
+      }
+      if (els.detailFirstData) els.detailFirstData.textContent = formatDateTime(sensor.firstDataAt);
+      if (els.detailLastData) els.detailLastData.textContent = formatDateTime(sensor.lastDataAt);
+      if (els.detailReadings) els.detailReadings.textContent = formatNumber(sensor.totalReadings || 0);
+      if (els.detailDataType) els.detailDataType.textContent = dataCategoryLabels[sensor.dataCategory || 'none'] || dataCategoryLabels.none;
       const qc = qcForSensor(sensor);
-      els.detailQcStatus.innerHTML = qc ? qcBadgeHtml(qc.qcStatus) : '-';
-      els.detailQcScore.textContent = qc ? `${formatNumber(qc.overallQcScore || 0, 1)} / 100` : '-';
-      els.detailQcFlags.textContent = qc?.flags?.length ? qc.flags.join(', ') : (qc ? 'None' : '-');
+      if (els.detailQcStatus) els.detailQcStatus.innerHTML = qc ? qcBadgeHtml(qc.qcStatus) : '-';
+      if (els.detailQcScore) els.detailQcScore.textContent = qc ? `${formatNumber(qc.overallQcScore || 0, 1)} / 100` : '-';
+      if (els.detailQcFlags) els.detailQcFlags.textContent = qc?.flags?.length ? qc.flags.join(', ') : (qc ? 'None' : '-');
+
 
       if (moveMap && hasValidLocation(sensor)) {
         map.setView([Number(sensor.lat), Number(sensor.lng)], Math.max(map.getZoom(), 15), { animate: true });

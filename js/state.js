@@ -100,7 +100,10 @@ const els = {
   detailReadings: document.getElementById('detailReadings'),
   detailDataType: document.getElementById('detailDataType'),
   detailQcStatus: document.getElementById('detailQcStatus'),
+  detailQcScore: document.getElementById('detailQcScore'),
+  detailQcFlags: document.getElementById('detailQcFlags'),
   detailQcReasons: document.getElementById('detailQcReasons'),
+
   sensorQcSection: document.getElementById('sensorQcSection'),
   waterChartBox: document.getElementById('waterChartBox'),
   dischargeChartBox: document.getElementById('dischargeChartBox'),
