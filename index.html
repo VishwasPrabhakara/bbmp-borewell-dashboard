@@ -493,7 +493,6 @@
     });
 
     const selectedMethodIsCritical = (critical = {}, mode = groundwaterMethodMode) => {
-      if (!hasGroundwaterTrendEvidence(critical)) return false;
       const votes = methodVotesForCritical(critical);
       if (mode === 'dashboard') {
         return isYes(critical.dashboardAction) || isGroundwaterCriticalWard(critical);
@@ -543,24 +542,12 @@
     };
 
     const isSelectedGroundwaterStable = (critical = {}) => {
-      const slope = selectedMethodSlope(critical);
-      return hasGroundwaterTrendEvidence(critical)
-        && Number.isFinite(slope)
-        && Math.abs(slope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+      return hasGroundwaterTrendEvidence(critical);
     };
 
     const criticalForSelectedMethod = (critical) => {
       if (!critical) return null;
       const hasTrendEvidence = hasGroundwaterTrendEvidence(critical);
-      if (!hasTrendEvidence) {
-        return {
-          ...critical,
-          groundwaterStatus: 'Insufficient data',
-          groundwaterDirection: 'Not computed',
-          dashboardAction: 'No',
-          dashboardMapCategory: 'Insufficient groundwater data'
-        };
-      }
       if (critical.groundwaterRiseOverride === 'Yes') {
         return {
           ...critical,
@@ -632,17 +619,17 @@
       if (wardAnalysisLens === 'extraction') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.criticalByExtraction ? 'critical' : 'normal';
+        return pumping.criticalByExtraction ? 'critical' : 'stable';
       }
       if (wardAnalysisLens === 'specific_capacity') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.criticalBySpecificCapacity ? 'critical' : 'normal';
+        return pumping.criticalBySpecificCapacity ? 'critical' : 'stable';
       }
       if (wardAnalysisLens === 'pumping_stress') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
-        return pumping.highNormalizedDrawdown ? 'critical' : 'normal';
+        return pumping.highNormalizedDrawdown ? 'critical' : 'stable';
       }
       return wardStatusKey(criticalForWardNo(wardNo));
     };
@@ -706,6 +693,7 @@
       if (
         critical
         && critical.dashboardMapCategory === 'Stable groundwater trend'
+        && isSelectedGroundwaterStable(critical)
       ) {
         return 'stable';
       }
@@ -1252,7 +1240,7 @@
                       : ward.criticalBySpecificCapacity
                 )).length,
             rise: 0,
-            normal: wardAnalysisLens === 'consumption'
+            stable: wardAnalysisLens === 'consumption'
               ? 0
               : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => !(
                   wardAnalysisLens === 'extraction'
@@ -1268,7 +1256,7 @@
         ? ['critical', 'rise', 'stable']
         : wardAnalysisLens === 'consumption'
           ? ['critical']
-          : ['critical', 'normal'];
+          : ['critical', 'stable'];
       if (wardStatusFilter && !availableStatusKeys.includes(wardStatusFilter)) {
         wardStatusFilter = '';
         refreshWardPopups();
@@ -1291,10 +1279,10 @@
             <button type="button" data-method-status-filter="critical" title="Filter critical wards"><i style="background:${mapLensCriticalColor()}"></i>${formatNumber(counts.critical)}</button>
             ${wardAnalysisLens === 'groundwater' ? `
               <button type="button" data-method-status-filter="rise" title="Filter groundwater rise wards"><i style="background:#0891b2"></i>${formatNumber(counts.rise)}</button>
-              <button type="button" data-method-status-filter="stable" title="Filter near-flat stable wards"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
+              <button type="button" data-method-status-filter="stable" title="Filter analysed wards that are not critical or rising"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
             ` : ''}
             ${wardAnalysisLens !== 'groundwater' && wardAnalysisLens !== 'consumption' ? `
-              <button type="button" data-method-status-filter="normal" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.normal)}</button>
+              <button type="button" data-method-status-filter="stable" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.stable)}</button>
             ` : ''}
           </div>
         </div>
@@ -2810,9 +2798,7 @@
       };
       const selectedCritical = selectedMethodIsCritical(localCritical);
       const selectedSlope = selectedMethodSlope(localCritical);
-      const selectedStable = hasSlopeWeeks
-        && Number.isFinite(selectedSlope)
-        && Math.abs(selectedSlope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+      const selectedStable = hasSlopeWeeks;
       const selectedMethodName = groundwaterMethodLabel();
       const linearRise = Number.isFinite(linearSlope) && linearSlope < -LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
       const significant = Number.isFinite(pValue) && pValue <= TREND_SIGNIFICANCE_ALPHA;
@@ -2847,7 +2833,7 @@
         : insufficient
         ? `Not enough plotted cleaned weekly ${statLabel} points are available. Points used: ${formatNumber(pointCount)}.`
         : selectedStable
-        ? `Stable groundwater trend: selected level is ${statLabel}; selected slope is within +/-${formatNumber(LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK, 2)} ft/week.`
+        ? `Stable groundwater trend: selected level is ${statLabel}; enough weekly data exists and the selected method does not mark this ward as critical or rising.`
         : `Mixed groundwater trend: selected level is ${statLabel}; the cleaned weekly graph is neither near-flat, declining, nor improving under the selected rule.`;
 
       return {
@@ -3807,9 +3793,7 @@
         };
         const selectedCritical = selectedMethodIsCritical(fallbackCritical);
         const selectedSlope = selectedMethodSlope(fallbackCritical);
-        const selectedStable = hasSlopeWeeks
-          && Number.isFinite(selectedSlope)
-          && Math.abs(selectedSlope) <= LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK;
+        const selectedStable = hasSlopeWeeks;
         const selectedMethodName = groundwaterMethodLabel();
         const groundwaterStatus = selectedCritical
           ? 'Critical'
@@ -3843,7 +3827,7 @@
           : localRow.groundwaterStatus === 'Insufficient data'
           ? `Not enough plotted cleaned weekly ward-average points are available. Points used: ${formatNumber(pointCount)}.`
           : selectedStable
-          ? `Stable groundwater trend: selected slope is within +/-${formatNumber(LINEAR_DECLINE_THRESHOLD_FT_PER_WEEK, 2)} ft/week.`
+          ? `Stable groundwater trend: enough plotted weekly ward-average points exist and the selected method does not mark this ward as critical or rising.`
           : `Mixed groundwater trend: the plotted cleaned weekly graph is neither near-flat, declining, nor improving under the selected rule.`;
 
         return {
