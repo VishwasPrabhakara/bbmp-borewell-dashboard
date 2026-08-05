@@ -162,6 +162,7 @@
       const selectedMapCritical = mapWardStatusKey(selectedWardNo) === 'critical';
       const capacity = specificCapacityByWardNo.get(normalizeWardNo(selectedWardNo));
       const showCapacity = hasValidSpecificCapacity(capacity);
+      const vd = wardVolumetricDeficit(selectedWardNo);
       return `
         <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
         <div><strong>Map lens:</strong> ${htmlEscape(wardAnalysisLensLabel())}</div>
@@ -172,8 +173,9 @@
         <div><strong>With data:</strong> ${formatNumber(withData)}</div>
         <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
         <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
-        ${criticalGw?.volumetric_deficit_ml ? `<div><strong>Volumetric Loss:</strong> ${formatNumber(criticalGw.volumetric_deficit_ml, 2)} ML (~${formatNumber(criticalGw.volumetric_deficit_tankers || 0, 0)} tankers)</div>` : ''}
-        ${criticalGw?.observation_period_category ? `<div><strong>Data Duration:</strong> ${htmlEscape(criticalGw.observation_period_category)}</div>` : ''}
+        ${vd.deficitMl > 0 ? `<div><strong>Volumetric Loss:</strong> ${formatNumber(vd.deficitMl, 2)} ML (~${formatNumber(vd.deficitTankers, 0)} tankers)</div>` : ''}
+        ${vd.category ? `<div><strong>Data Duration:</strong> ${htmlEscape(vd.category)}</div>` : ''}
+
 
         ${showCapacity ? `
           <div><strong>Average specific capacity:</strong> ${formatNumber(scaledSpecificCapacity(capacity.averageTransmissivityScaled, capacity.averageSpecificCapacityM2s), 4)}</div>

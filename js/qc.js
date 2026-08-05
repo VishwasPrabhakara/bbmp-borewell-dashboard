@@ -215,6 +215,55 @@
       pumpingPerformanceWardSummaryByNo.get(normalizeWardNo(wardNo)) || null
     );
 
+    const wardVolumetricDeficit = (wardNo) => {
+      const normalizedWardNo = normalizeWardNo(wardNo);
+      const critical = criticalForWardNo(normalizedWardNo);
+
+      const rawMl = critical?.volumetric_deficit_ml ?? critical?.volumetricDeficitMl;
+      if (rawMl != null && Number.isFinite(Number(rawMl)) && Number(rawMl) > 0) {
+        return {
+          deficitMl: Number(rawMl),
+          deficitM3: Number(critical?.volumetric_deficit_m3 ?? critical?.volumetricDeficitM3 ?? Number(rawMl) * 1000),
+          deficitTankers: Number(critical?.volumetric_deficit_tankers ?? critical?.volumetricDeficitTankers ?? (Number(rawMl) * 1000) / 12),
+          durationDays: Number(critical?.record_duration_days ?? critical?.recordDurationDays ?? 60),
+          category: critical?.observation_period_category ?? critical?.observationPeriodCategory ?? 'Medium-term Trend (60-365 days)'
+        };
+      }
+
+      const slopeFtPerWeek = Number(critical?.senSlopeFtPerWeek ?? critical?.linearSlopeFtPerWeek ?? critical?.water_level_trend_ft_per_week ?? 0);
+      if (!Number.isFinite(slopeFtPerWeek) || slopeFtPerWeek <= 0) {
+        return { deficitMl: 0, deficitM3: 0, deficitTankers: 0, durationDays: 0, category: 'Insufficient Data' };
+      }
+
+      const popItem = populationByWardNo.get(normalizedWardNo);
+      const areaKm2 = Number(popItem?.areaKm2 ?? popItem?.area_km2 ?? 8.0);
+      const pointCount = Number(critical?.usableWeeklyValues ?? critical?.pointCount ?? 8);
+      const durationDays = Math.max(pointCount * 7, 30);
+
+      const totalDropFt = slopeFtPerWeek * (durationDays / 7.0);
+      const totalDropM = totalDropFt * 0.3048;
+      const areaM2 = areaKm2 * 1000000.0;
+      const specificYield = 0.02;
+
+      const deficitM3 = areaM2 * totalDropM * specificYield;
+      const deficitMl = deficitM3 / 1000.0;
+      const deficitTankers = deficitM3 / 12.0;
+
+      const category = durationDays < 60
+        ? 'Short-term Observation (<60 days)'
+        : durationDays <= 365
+        ? 'Medium-term Trend (60-365 days)'
+        : 'Multi-season Validated Trend (>365 days)';
+
+      return {
+        deficitMl,
+        deficitM3,
+        deficitTankers,
+        durationDays,
+        category
+      };
+    };
+
     const isPreviousConsumptionCriticalWard = (wardNo) => {
       const ward = criticalGroundwaterByNo.get(normalizeWardNo(wardNo));
       return isYes(ward?.previousCriticalWard) || isYes(ward?.oldConsumptionNoGroundwaterData);
@@ -225,9 +274,8 @@
         return isPreviousConsumptionCriticalWard(wardNo) ? 'critical' : '';
       }
       if (wardAnalysisLens === 'volumetric_deficit') {
-        const ward = criticalForWardNo(wardNo);
-        if (!ward) return '';
-        return (Number(ward.volumetric_deficit_ml) >= 10.0) ? 'critical' : 'stable';
+        const vd = wardVolumetricDeficit(wardNo);
+        return vd.deficitMl >= 5.0 ? 'critical' : vd.deficitMl > 0 ? 'stable' : '';
       }
       if (wardAnalysisLens === 'extraction') {
         const pumping = pumpingWardSummaryForNo(wardNo);
@@ -254,11 +302,12 @@
         return critical ? 'Previous Consumption-Critical Ward' : 'Not critical under previous consumption method';
       }
       if (wardAnalysisLens === 'volumetric_deficit') {
-        const ward = criticalForWardNo(wardNo);
-        const val = Number(ward?.volumetric_deficit_ml || 0);
+        const vd = wardVolumetricDeficit(wardNo);
         return critical
-          ? `Critical: High Volumetric Loss (${formatNumber(val, 2)} ML)`
-          : `Low/Moderate Volumetric Deficit (${formatNumber(val, 2)} ML)`;
+          ? `Critical: High Volumetric Loss (${formatNumber(vd.deficitMl, 2)} ML)`
+          : vd.deficitMl > 0
+          ? `Low/Moderate Volumetric Deficit (${formatNumber(vd.deficitMl, 2)} ML)`
+          : 'No groundwater deficit calculated';
       }
       if (wardAnalysisLens === 'extraction') {
         if (!pumping) return 'No valid pumping-session data';
@@ -283,13 +332,15 @@
           : 'This ward was not included in the original 60 consumption-critical wards.';
       }
       if (wardAnalysisLens === 'volumetric_deficit') {
-        const ward = criticalForWardNo(wardNo);
-        const val = Number(ward?.volumetric_deficit_ml || 0);
-        const tankers = formatNumber(ward?.volumetric_deficit_tankers || 0, 0);
-        return val >= 10.0
-          ? `Estimated groundwater storage loss is ${formatNumber(val, 2)} ML (~${tankers} tankers) based on Specific Yield (Sy=0.02). Exceeds high-deficit threshold (10 ML).`
-          : `Estimated groundwater storage loss is ${formatNumber(val, 2)} ML (~${tankers} tankers), which is below the high-deficit cutoff (10 ML).`;
+        const vd = wardVolumetricDeficit(wardNo);
+        const tankers = formatNumber(vd.deficitTankers, 0);
+        return vd.deficitMl >= 5.0
+          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers) based on Specific Yield (Sy=0.02). Exceeds high-deficit threshold (5 ML).`
+          : vd.deficitMl > 0
+          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers), which is below the high-deficit cutoff (5 ML).`
+          : 'No water table decline detected for this ward.';
       }
+
       if (wardAnalysisLens === 'extraction') {
         if (!pumping) return 'No valid discharge, duration, and drawdown sessions are available.';
         return `Estimated pumped volume is ${formatNumber(pumping.totalPumpedVolumeM3, 0)} m3. The citywide high-extraction cutoff is ${formatNumber(pumpingPerformanceWardThresholds.extractionP75M3, 0)} m3.`;

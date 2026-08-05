@@ -382,17 +382,23 @@
         ${selectedMapLensCategoryCardHtml(wardNumber(props), criticalGw, trendShape)}
         <section class="ward-tab-panel active" data-ward-panel="overview">
           ${wardAnalysisLens === 'groundwater' ? criticalReasonHtml(criticalGw) : ''}
-          <section class="ward-summary-grid">
-            ${wardMetric('Total Sensors', formatNumber(count))}
-            ${wardMetric('QC-GOOD for Trend', formatNumber(goodSensors))}
-            ${wardMetric('Not QC-GOOD for Trend', formatNumber(notUsable))}
-            ${wardMetric('QC-GOOD Trend Coverage', goodPercent)}
-            ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
-            ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
-            ${criticalGw?.volumetric_deficit_ml ? wardMetric('Groundwater Volumetric Loss', `${formatNumber(criticalGw.volumetric_deficit_ml, 2)} ML (~${formatNumber(criticalGw.volumetric_deficit_tankers || 0, 0)} tankers)`, 'bad') : ''}
-            ${criticalGw?.observation_period_category ? wardMetric('Observation Period', htmlEscape(criticalGw.observation_period_category)) : ''}
-            ${keyPumpingMetrics}
-          </section>
+          ${(() => {
+            const vd = wardVolumetricDeficit(wardNumber(props));
+            return `
+              <section class="ward-summary-grid">
+                ${wardMetric('Total Sensors', formatNumber(count))}
+                ${wardMetric('QC-GOOD for Trend', formatNumber(goodSensors))}
+                ${wardMetric('Not QC-GOOD for Trend', formatNumber(notUsable))}
+                ${wardMetric('QC-GOOD Trend Coverage', goodPercent)}
+                ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
+                ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
+                ${vd.deficitMl > 0 ? wardMetric('Groundwater Volumetric Loss', `${formatNumber(vd.deficitMl, 2)} ML (~${formatNumber(vd.deficitTankers, 0)} tankers)`, 'bad') : ''}
+                ${vd.category ? wardMetric('Observation Period', htmlEscape(vd.category)) : ''}
+                ${keyPumpingMetrics}
+              </section>
+            `;
+          })()}
+
           ${dropNote}
           ${omittedNote}
           <section class="ward-explain formula-card">
