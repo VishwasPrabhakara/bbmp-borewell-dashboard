@@ -285,7 +285,7 @@
       }
       if (wardAnalysisLens === 'volumetric_deficit') {
         const vd = wardVolumetricDeficit(wardNo);
-        return vd.deficitMl >= 5.0 ? 'critical' : vd.deficitMl > 0 ? 'stable' : '';
+        return vd.deficitMl >= 10.0 ? 'critical' : vd.deficitMl > 0 ? 'stable' : '';
       }
       if (wardAnalysisLens === 'extraction') {
         const pumping = pumpingWardSummaryForNo(wardNo);
@@ -314,7 +314,7 @@
       if (wardAnalysisLens === 'volumetric_deficit') {
         const vd = wardVolumetricDeficit(wardNo);
         return critical
-          ? `Critical: High Volumetric Loss (${formatNumber(vd.deficitMl, 2)} ML)`
+          ? `Critical: Severe Volumetric Loss (${formatNumber(vd.deficitMl, 2)} ML)`
           : vd.deficitMl > 0
           ? `Low/Moderate Volumetric Deficit (${formatNumber(vd.deficitMl, 2)} ML)`
           : 'No groundwater deficit calculated';
@@ -344,10 +344,10 @@
       if (wardAnalysisLens === 'volumetric_deficit') {
         const vd = wardVolumetricDeficit(wardNo);
         const tankers = formatNumber(vd.deficitTankers, 0);
-        return vd.deficitMl >= 5.0
-          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers) based on Specific Yield (Sy=0.02). Exceeds high-deficit threshold (5 ML).`
+        return vd.deficitMl >= 10.0
+          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers) based on Specific Yield (Sy=0.02). Exceeds severe deficit threshold (10 ML).`
           : vd.deficitMl > 0
-          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers), which is below the high-deficit cutoff (5 ML).`
+          ? `Estimated groundwater storage loss is ${formatNumber(vd.deficitMl, 2)} ML (~${tankers} tankers), which is below the severe deficit cutoff (10 ML).`
           : 'No water table decline detected for this ward.';
       }
 
