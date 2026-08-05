@@ -389,18 +389,23 @@
             ${wardMetric('QC-GOOD Trend Coverage', goodPercent)}
             ${wardMetric('Avg Drop/day', formatTrend(avgDrop, 'ft/day', 2), dropClass)}
             ${wardMetric('Max Drop/day', formatTrend(maxDrop, 'ft/day', 2), dropClass)}
+            ${criticalGw?.volumetric_deficit_ml ? wardMetric('Groundwater Volumetric Loss', `${formatNumber(criticalGw.volumetric_deficit_ml, 2)} ML (~${formatNumber(criticalGw.volumetric_deficit_tankers || 0, 0)} tankers)`, 'bad') : ''}
+            ${criticalGw?.observation_period_category ? wardMetric('Observation Period', htmlEscape(criticalGw.observation_period_category)) : ''}
             ${keyPumpingMetrics}
           </section>
           ${dropNote}
           ${omittedNote}
           <section class="ward-explain formula-card">
             <h3>Calculation Notes</h3>
+            <p><strong>Groundwater Volumetric Loss</strong> = Ward Area (m2) x Water Level Drop (m) x Specific Yield (S<sub>y</sub> = 0.02). Represents total physical volume of groundwater depleted from subsurface storage.</p>
+            <p><strong>Static Rest Water Table</strong> = Measured at motor startup (Motor ON) to isolate true water table trends from active pumping drawdown.</p>
             <p><strong>Specific Capacity</strong> = Lowest discharge during pumping period / Drawdown.</p>
             <p><strong>Inverse Specific Capacity</strong> = Drawdown / Lowest discharge during pumping period.</p>
             <p><strong>Estimated Pumped Volume</strong> = Average session discharge x pumping duration. Minimum discharge is used only when average discharge is unavailable.</p>
             <p><strong>Volume-normalized Drawdown</strong> = Drawdown / Estimated pumped volume. Higher values indicate a larger water-level response per cubic metre extracted.</p>
             <p>Groundwater decline uses cleaned weekly water-level readings; positive slope means water level below surface is increasing, which indicates decline.</p>
           </section>
+
         </section>
         <section class="ward-tab-panel" data-ward-panel="pumping">
           <section class="ward-explain pumping-spotlight">
