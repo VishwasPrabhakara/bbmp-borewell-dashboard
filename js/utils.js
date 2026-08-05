@@ -200,33 +200,45 @@
         if (els.methodSummary) els.methodSummary.style.display = 'none';
         return;
       }
+      const allWardNumbers = Array.from(new Set([
+        ...wardFeatures.map((f) => normalizeWardNo(wardNumber(f.properties || {}))),
+        ...Array.from(criticalGroundwaterByNo.keys()),
+        ...Array.from(wardIndicatorsByNo.keys())
+      ])).filter(Boolean);
+
       const counts = wardAnalysisLens === 'groundwater'
         ? {
             critical: wards.filter((ward) => wardStatusKey(ward) === 'critical').length,
             rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length,
             stable: wards.filter((ward) => wardStatusKey(ward) === 'stable').length
           }
-        : {
-            critical: wardAnalysisLens === 'consumption'
-              ? Array.from(criticalGroundwaterByNo.values()).filter((ward) => isYes(ward.previousCriticalWard) || isYes(ward.oldConsumptionNoGroundwaterData)).length
-              : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => (
-                  wardAnalysisLens === 'extraction'
-                    ? ward.criticalByExtraction
-                    : wardAnalysisLens === 'pumping_stress'
-                      ? ward.highNormalizedDrawdown
-                      : ward.criticalBySpecificCapacity
-                )).length,
-            rise: 0,
-            stable: wardAnalysisLens === 'consumption'
-              ? 0
-              : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => !(
-                  wardAnalysisLens === 'extraction'
-                    ? ward.criticalByExtraction
-                    : wardAnalysisLens === 'pumping_stress'
-                      ? ward.highNormalizedDrawdown
-                      : ward.criticalBySpecificCapacity
-                )).length
-          };
+        : wardAnalysisLens === 'volumetric_deficit'
+          ? {
+              critical: allWardNumbers.filter((no) => mapWardStatusKey(no) === 'critical').length,
+              rise: 0,
+              stable: allWardNumbers.filter((no) => mapWardStatusKey(no) === 'stable').length
+            }
+          : {
+              critical: wardAnalysisLens === 'consumption'
+                ? Array.from(criticalGroundwaterByNo.values()).filter((ward) => isYes(ward.previousCriticalWard) || isYes(ward.oldConsumptionNoGroundwaterData)).length
+                : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => (
+                    wardAnalysisLens === 'extraction'
+                      ? ward.criticalByExtraction
+                      : wardAnalysisLens === 'pumping_stress'
+                        ? ward.highNormalizedDrawdown
+                        : ward.criticalBySpecificCapacity
+                  )).length,
+              rise: 0,
+              stable: wardAnalysisLens === 'consumption'
+                ? 0
+                : Array.from(pumpingPerformanceWardSummaryByNo.values()).filter((ward) => !(
+                    wardAnalysisLens === 'extraction'
+                      ? ward.criticalByExtraction
+                      : wardAnalysisLens === 'pumping_stress'
+                        ? ward.highNormalizedDrawdown
+                        : ward.criticalBySpecificCapacity
+                  )).length
+            };
       const selectedMethodLabel = groundwaterMethodLabel();
       latestWardStatusCounts = counts;
       const availableStatusKeys = wardAnalysisLens === 'groundwater'

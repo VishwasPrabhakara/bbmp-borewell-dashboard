@@ -218,19 +218,29 @@
     const wardVolumetricDeficit = (wardNo) => {
       const normalizedWardNo = normalizeWardNo(wardNo);
       const critical = criticalForWardNo(normalizedWardNo);
+      const indicators = wardIndicatorsByNo.get(normalizedWardNo);
 
-      const rawMl = critical?.volumetric_deficit_ml ?? critical?.volumetricDeficitMl;
+      const rawMl = indicators?.volumetric_deficit_ml ?? indicators?.volumetricDeficitMl ?? critical?.volumetric_deficit_ml ?? critical?.volumetricDeficitMl;
       if (rawMl != null && Number.isFinite(Number(rawMl)) && Number(rawMl) > 0) {
         return {
           deficitMl: Number(rawMl),
-          deficitM3: Number(critical?.volumetric_deficit_m3 ?? critical?.volumetricDeficitM3 ?? Number(rawMl) * 1000),
-          deficitTankers: Number(critical?.volumetric_deficit_tankers ?? critical?.volumetricDeficitTankers ?? (Number(rawMl) * 1000) / 12),
-          durationDays: Number(critical?.record_duration_days ?? critical?.recordDurationDays ?? 60),
-          category: critical?.observation_period_category ?? critical?.observationPeriodCategory ?? 'Medium-term Trend (60-365 days)'
+          deficitM3: Number(indicators?.volumetric_deficit_m3 ?? indicators?.volumetricDeficitM3 ?? critical?.volumetric_deficit_m3 ?? Number(rawMl) * 1000),
+          deficitTankers: Number(indicators?.volumetric_deficit_tankers ?? indicators?.volumetricDeficitTankers ?? critical?.volumetric_deficit_tankers ?? (Number(rawMl) * 1000) / 12),
+          durationDays: Number(indicators?.record_duration_days ?? indicators?.recordDurationDays ?? critical?.record_duration_days ?? 60),
+          category: indicators?.observation_period_category ?? indicators?.observationPeriodCategory ?? critical?.observation_period_category ?? 'Medium-term Trend (60-365 days)'
         };
       }
 
-      const slopeFtPerWeek = Number(critical?.senSlopeFtPerWeek ?? critical?.linearSlopeFtPerWeek ?? critical?.water_level_trend_ft_per_week ?? 0);
+      const slopeFtPerWeek = Number(
+        indicators?.waterLevelTrendFtPerWeek ??
+        indicators?.water_level_trend_ft_per_week ??
+        critical?.senSlopeFtPerWeek ??
+        critical?.linearSlopeFtPerWeek ??
+        critical?.waterLevelTrendFtPerWeek ??
+        critical?.water_level_trend_ft_per_week ??
+        (indicators?.waterLevelTrendFtPerMonth != null ? Number(indicators.waterLevelTrendFtPerMonth) / 4.345 : null) ??
+        0
+      );
       if (!Number.isFinite(slopeFtPerWeek) || slopeFtPerWeek <= 0) {
         return { deficitMl: 0, deficitM3: 0, deficitTankers: 0, durationDays: 0, category: 'Insufficient Data' };
       }
@@ -763,14 +773,14 @@
           fillColor: '#087f8c',
           fillOpacity: 0.68
         };
-      } else if (currentDataSource === 'kh' && wardAnalysisLens === 'groundwater' && key === 'stable') {
+      } else if (currentDataSource === 'kh' && key === 'stable') {
         style = {
           color: '#8a4300',
-          weight: 3,
-          opacity: 1,
+          weight: 2,
+          opacity: 0.9,
           fill: true,
-          fillColor: '#c66a00',
-          fillOpacity: 0.62
+          fillColor: '#d97706',
+          fillOpacity: 0.58
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
