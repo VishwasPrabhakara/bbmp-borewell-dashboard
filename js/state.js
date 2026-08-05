@@ -133,5 +133,8 @@ const els = {
   chartFullscreenTitle: document.getElementById('chartFullscreenTitle'),
   chartFullscreenCanvas: document.getElementById('chartFullscreenCanvas'),
   chartFullscreenControls: document.getElementById('chartFullscreenControls'),
-  chartFullscreenClose: document.getElementById('chartFullscreenClose')
+  chartFullscreenClose: document.getElementById('chartFullscreenClose'),
+  downloadWaterChart: document.getElementById('downloadWaterChart'),
+  downloadDischargeChart: document.getElementById('downloadDischargeChart')
 };
+

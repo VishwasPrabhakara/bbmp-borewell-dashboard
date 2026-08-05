@@ -744,18 +744,18 @@ window.addEventListener('unhandledrejection', (event) => {
       showCycleConnector = !showCycleConnector;
       redrawGroundwaterCharts();
     });
-    els.downloadWaterChart.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
-    els.downloadDischargeChart.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
+    els.downloadWaterChart?.addEventListener('click', () => downloadChartImage(waterChart, 'water_level'));
+    els.downloadDischargeChart?.addEventListener('click', () => downloadChartImage(dischargeChart, 'discharge'));
     document.addEventListener('click', (event) => {
       const button = event.target.closest('.chart-expand');
       if (!button) return;
       openChartFullscreen(button.dataset.chartId, button.dataset.chartTitle || 'Chart');
     });
-    els.chartFullscreenClose.addEventListener('click', closeChartFullscreen);
-    els.chartFullscreen.addEventListener('click', (event) => {
+    els.chartFullscreenClose?.addEventListener('click', closeChartFullscreen);
+    els.chartFullscreen?.addEventListener('click', (event) => {
       if (event.target === els.chartFullscreen) closeChartFullscreen();
     });
-    els.chartFullscreenControls.addEventListener('click', (event) => {
+    els.chartFullscreenControls?.addEventListener('click', (event) => {
       const button = event.target.closest('button[data-fullscreen-range]');
       if (!button || !fullscreenSource) return;
       const context = fullscreenRangeContext(fullscreenSource.canvasId);
@@ -764,7 +764,7 @@ window.addEventListener('unhandledrejection', (event) => {
       target?.click();
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && els.chartFullscreen.classList.contains('open')) {
+      if (event.key === 'Escape' && els.chartFullscreen?.classList.contains('open')) {
         closeChartFullscreen();
       }
     });
@@ -778,22 +778,24 @@ window.addEventListener('unhandledrejection', (event) => {
       });
     });
 
-    els.search.addEventListener('input', renderSensors);
-    els.fitSensors.addEventListener('click', fitSensors);
-    els.refreshData.addEventListener('click', refreshData);
+    els.search?.addEventListener('input', renderSensors);
+    els.fitSensors?.addEventListener('click', fitSensors);
+    els.refreshData?.addEventListener('click', refreshData);
     els.clearSelection?.addEventListener(
       'click',
       clearCurrentSelection
     );
-    els.toggleLeft.addEventListener('click', () => {
+    els.toggleLeft?.addEventListener('click', () => {
       els.app.classList.toggle('left-collapsed');
       const collapsed = els.app.classList.contains('left-collapsed');
+
       els.toggleLeft.textContent = collapsed ? '›' : '‹';
       els.toggleLeft.title = collapsed ? 'Expand sensor list' : 'Collapse sensor list';
       els.toggleLeft.setAttribute('aria-label', els.toggleLeft.title);
       setTimeout(() => map.invalidateSize(), 220);
     });
-    els.toggleRight.addEventListener('click', () => {
+    els.toggleRight?.addEventListener('click', () => {
+
       els.app.classList.toggle('right-collapsed');
       const collapsed = els.app.classList.contains('right-collapsed');
       els.toggleRight.textContent = collapsed ? '‹' : '›';
