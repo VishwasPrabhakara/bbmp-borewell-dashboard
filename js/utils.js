@@ -239,6 +239,8 @@
       }
       const lensNote = wardAnalysisLens === 'groundwater'
         ? `${selectedMethodLabel} using cleaned weekly ${wardLevelStatistic} levels.`
+        : wardAnalysisLens === 'volumetric_deficit'
+          ? 'High volumetric deficit highlights wards losing >= 10 Million Liters (ML) of groundwater storage based on Specific Yield (Sy=0.02).'
         : wardAnalysisLens === 'consumption'
           ? 'Reproduces the original 60 wards identified by the previous consumption-based assessment.'
           : wardAnalysisLens === 'extraction'
@@ -246,6 +248,7 @@
             : wardAnalysisLens === 'pumping_stress'
               ? `High pumping stress uses the citywide ward 75th percentile: ${formatNumber(pumpingPerformanceWardThresholds.normalizedDrawdownP75FtPerM3, 2)} ft/m3.`
             : `Low specific capacity uses the citywide ward 25th percentile: ${formatNumber(pumpingPerformanceWardThresholds.specificCapacityP25Scaled, 4)} x10^-6 m2/s.`;
+
       els.methodSummary.style.display = '';
       els.methodSummary.innerHTML = `
         <div class="map-control-heading">

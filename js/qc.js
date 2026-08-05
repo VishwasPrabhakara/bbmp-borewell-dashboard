@@ -74,11 +74,13 @@
 
     const wardAnalysisLensOptions = [
       { value: 'groundwater', label: 'Groundwater Decline' },
+      { value: 'volumetric_deficit', label: 'High Volumetric Deficit (ML)' },
       { value: 'extraction', label: 'High Extraction' },
       { value: 'pumping_stress', label: 'High Pumping Stress (Drawdown/m3)' },
       { value: 'consumption', label: 'Previous Consumption Criticality' },
       { value: 'specific_capacity', label: 'Low Specific Capacity' }
     ];
+
 
     const wardAnalysisLensLabel = (value = wardAnalysisLens) => (
       wardAnalysisLensOptions.find((item) => item.value === value)?.label
@@ -222,6 +224,11 @@
       if (wardAnalysisLens === 'consumption') {
         return isPreviousConsumptionCriticalWard(wardNo) ? 'critical' : '';
       }
+      if (wardAnalysisLens === 'volumetric_deficit') {
+        const ward = criticalForWardNo(wardNo);
+        if (!ward) return '';
+        return (Number(ward.volumetric_deficit_ml) >= 10.0) ? 'critical' : 'stable';
+      }
       if (wardAnalysisLens === 'extraction') {
         const pumping = pumpingWardSummaryForNo(wardNo);
         if (!pumping) return '';
@@ -246,6 +253,13 @@
       if (wardAnalysisLens === 'consumption') {
         return critical ? 'Previous Consumption-Critical Ward' : 'Not critical under previous consumption method';
       }
+      if (wardAnalysisLens === 'volumetric_deficit') {
+        const ward = criticalForWardNo(wardNo);
+        const val = Number(ward?.volumetric_deficit_ml || 0);
+        return critical
+          ? `Critical: High Volumetric Loss (${formatNumber(val, 2)} ML)`
+          : `Low/Moderate Volumetric Deficit (${formatNumber(val, 2)} ML)`;
+      }
       if (wardAnalysisLens === 'extraction') {
         if (!pumping) return 'No valid pumping-session data';
         return critical ? 'Critical: High Estimated Extraction' : 'Below high-extraction threshold';
@@ -268,6 +282,14 @@
           ? 'This ward belongs to the original 60 wards identified by the earlier consumption-based assessment.'
           : 'This ward was not included in the original 60 consumption-critical wards.';
       }
+      if (wardAnalysisLens === 'volumetric_deficit') {
+        const ward = criticalForWardNo(wardNo);
+        const val = Number(ward?.volumetric_deficit_ml || 0);
+        const tankers = formatNumber(ward?.volumetric_deficit_tankers || 0, 0);
+        return val >= 10.0
+          ? `Estimated groundwater storage loss is ${formatNumber(val, 2)} ML (~${tankers} tankers) based on Specific Yield (Sy=0.02). Exceeds high-deficit threshold (10 ML).`
+          : `Estimated groundwater storage loss is ${formatNumber(val, 2)} ML (~${tankers} tankers), which is below the high-deficit cutoff (10 ML).`;
+      }
       if (wardAnalysisLens === 'extraction') {
         if (!pumping) return 'No valid discharge, duration, and drawdown sessions are available.';
         return `Estimated pumped volume is ${formatNumber(pumping.totalPumpedVolumeM3, 0)} m3. The citywide high-extraction cutoff is ${formatNumber(pumpingPerformanceWardThresholds.extractionP75M3, 0)} m3.`;
@@ -287,11 +309,13 @@
 
     const mapLensCriticalLabel = () => ({
       groundwater: 'Critical: GW Decline',
+      volumetric_deficit: 'Critical: High Volumetric Loss',
       extraction: 'Critical: High Extraction',
       consumption: 'Previous Consumption Critical',
       specific_capacity: 'Critical: Low Specific Capacity',
       pumping_stress: 'Critical: High Drawdown per m3'
     }[wardAnalysisLens] || 'Critical ward');
+
 
     const wardStatusKey = (critical) => {
       if (isGroundwaterCriticalWard(critical)) return 'critical';
