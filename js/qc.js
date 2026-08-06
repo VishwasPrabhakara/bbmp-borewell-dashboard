@@ -346,6 +346,7 @@
         return critical 
           ? `Common in ${count} analytical lenses`
           : `Present in only ${count} analytical lenses`;
+      }
       if (wardAnalysisLens === 'consumption') {
         return critical ? 'Previous Consumption-Critical Ward' : 'Not critical under previous consumption method';
       }
@@ -403,6 +404,7 @@
 
         Included:
         ${active.join(", ") || "None"}`;
+}
       if (wardAnalysisLens === 'consumption') {
         return isPreviousConsumptionCriticalWard(wardNo)
           ? 'This ward belongs to the original 60 wards identified by the earlier consumption-based assessment.'
