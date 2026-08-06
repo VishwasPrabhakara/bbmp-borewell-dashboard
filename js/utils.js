@@ -206,12 +206,19 @@
         ...Array.from(wardIndicatorsByNo.keys())
       ])).filter(Boolean);
 
+      const overallWards = Array.from(allWardNumbers).filter((wardNo) => overallLensCritical(wardNo));
       const counts = wardAnalysisLens === 'groundwater'
         ? {
             critical: wards.filter((ward) => wardStatusKey(ward) === 'critical').length,
             rise: wards.filter((ward) => wardStatusKey(ward) === 'rise').length,
             stable: wards.filter((ward) => wardStatusKey(ward) === 'stable').length
           }
+        : wardAnalysisLens === 'overall'
+          ? {
+              critical: overallWards.length,
+              rise: 0,
+              stable: 0
+            }
         : wardAnalysisLens === 'volumetric_deficit'
           ? {
               critical: allWardNumbers.filter((no) => mapWardStatusKey(no) === 'critical').length,
@@ -243,6 +250,8 @@
       latestWardStatusCounts = counts;
       const availableStatusKeys = wardAnalysisLens === 'groundwater'
         ? ['critical', 'rise', 'stable']
+        : wardAnalysisLens === 'overall'
+          ? ['critical']
         : wardAnalysisLens === 'consumption'
           ? ['critical']
           : ['critical', 'stable'];
@@ -253,6 +262,8 @@
       }
       const lensNote = wardAnalysisLens === 'groundwater'
         ? `${selectedMethodLabel} using cleaned weekly ${wardLevelStatistic} levels.`
+        : wardAnalysisLens === 'overall'
+          ? 'Overall lens marks only wards that are critical in groundwater decline, volumetric deficit, extraction, pumping stress, and specific capacity.'
         : wardAnalysisLens === 'volumetric_deficit'
           ? 'High volumetric deficit highlights wards losing >= 10 Million Liters (ML) of groundwater storage based on Specific Yield (Sy=0.02).'
         : wardAnalysisLens === 'consumption'
@@ -264,22 +275,6 @@
             : `Low specific capacity uses the citywide ward 25th percentile: ${formatNumber(pumpingPerformanceWardThresholds.specificCapacityP25Scaled, 4)} x10^-6 m2/s.`;
 
       els.methodSummary.style.display = '';
-      els.methodSummary.innerHTML = `
-        <div class="map-control-heading">
-          <div><span>Ward analysis</span><strong>${htmlEscape(wardAnalysisLensLabel())}</strong></div>
-          <div class="map-status-counts" aria-label="Ward status counts">
-            <button type="button" data-method-status-filter="critical" title="Filter critical wards"><i style="background:${mapLensCriticalColor()}"></i>${formatNumber(counts.critical)}</button>
-            ${wardAnalysisLens === 'groundwater' ? `
-              <button type="button" data-method-status-filter="rise" title="Filter groundwater rise wards"><i style="background:#0891b2"></i>${formatNumber(counts.rise)}</button>
-              <button type="button" data-method-status-filter="stable" title="Filter analysed wards that are not critical or rising"><i style="background:#d97706"></i>${formatNumber(counts.stable)}</button>
-            ` : ''}
-            ${wardAnalysisLens !== 'groundwater' && wardAnalysisLens !== 'consumption' ? `
-              <button type="button" data-method-status-filter="stable" title="Filter wards below this lens threshold"><i style="background:#94a3b8"></i>${formatNumber(counts.stable)}</button>
-            ` : ''}
-          </div>
-        </div>
-        <div class="method-control-grid">
-          <label class="method-field method-field-primary">
             <span>Analysis lens</span>
             <select data-analysis-lens-select>
               ${wardAnalysisLensOptions.map((item) => `

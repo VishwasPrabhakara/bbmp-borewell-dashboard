@@ -181,16 +181,24 @@ window.addEventListener('unhandledrejection', (event) => {
       }
       els.refreshStatus.textContent = `Loading ${sourceLabel} sensor data...`;
       showSensorLoading(`Loading ${sourceLabel} sensors...`);
-      const [sensorResponse, qcResponse] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/sensors?${sourceQuery()}`),
-        fetch(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`)
-      ]);
-      if (sequence !== loadSequence) return;
-      if (!sensorResponse.ok) throw new Error('Could not load sensors from local dashboard server.');
-      const payload = await sensorResponse.json();
-      let qcPayload = { sensors: [] };
-      if (qcResponse.ok) {
-        qcPayload = await qcResponse.json();
+      let payload, qcPayload;
+      try {
+        const [sensorData, qcData] = await Promise.all([
+          fetchJsonWithRetry(`${API_BASE_URL}/api/sensors?${sourceQuery()}`, null, 2),
+          fetchJsonWithRetry(`${API_BASE_URL}/api/qc/sensors?${sourceQuery()}`, { sensors: [] }, 2)
+        ]);
+        if (sequence !== loadSequence) return;
+        if (!sensorData || !Array.isArray(sensorData.sensors)) {
+          throw new Error(`Could not load sensors from API server (${API_BASE_URL}).`);
+        }
+        payload = sensorData;
+        qcPayload = qcData || { sensors: [] };
+      } catch (error) {
+        if (sequence !== loadSequence) return;
+        hideSensorLoading();
+        els.refreshStatus.innerHTML = `<span style="color: #ef4444; font-weight: 600;">Failed to load ${sourceLabel} sensors.</span> <button id="retryLoadSensorsBtn" style="margin-left: 8px; padding: 2px 8px; border-radius: 4px; border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer;">Retry</button>`;
+        document.getElementById('retryLoadSensorsBtn')?.addEventListener('click', () => loadSensors());
+        throw error;
       }
       applySensorDashboardData(payload, qcPayload, sourceLabel, false);
 

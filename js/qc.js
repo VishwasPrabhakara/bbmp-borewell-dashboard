@@ -74,12 +74,14 @@
 
     const wardAnalysisLensOptions = [
       { value: 'groundwater', label: 'Groundwater Decline' },
+      { value: 'overall', label: 'Overall Common Across 5 Lenses' },
       { value: 'volumetric_deficit', label: 'High Volumetric Deficit (ML)' },
       { value: 'extraction', label: 'High Extraction' },
       { value: 'pumping_stress', label: 'High Pumping Stress (Drawdown/m3)' },
       { value: 'consumption', label: 'Previous Consumption Criticality' },
       { value: 'specific_capacity', label: 'Low Specific Capacity' }
     ];
+
 
 
     const wardAnalysisLensLabel = (value = wardAnalysisLens) => (
@@ -147,6 +149,24 @@
         return Number.isFinite(theil) ? theil : linear;
       }
       return Number.isFinite(linear) ? linear : theil;
+    };
+
+    const overallCriticalLensFlags = (wardNo) => {
+      const normalizedWardNo = normalizeWardNo(wardNo);
+      const critical = criticalForWardNo(normalizedWardNo);
+      const pumping = pumpingWardSummaryForNo(normalizedWardNo);
+      return {
+        groundwater: wardStatusKey(critical) === 'critical',
+        volumetric_deficit: wardVolumetricDeficit(normalizedWardNo).deficitMl >= 10.0,
+        extraction: Boolean(pumping?.criticalByExtraction),
+        pumping_stress: Boolean(pumping?.highNormalizedDrawdown),
+        specific_capacity: Boolean(pumping?.criticalBySpecificCapacity)
+      };
+    };
+
+    const overallLensCritical = (wardNo) => {
+      const flags = overallCriticalLensFlags(wardNo);
+      return Object.values(flags).every(Boolean);
     };
 
     const isSelectedGroundwaterStable = (critical = {}) => {
@@ -280,6 +300,9 @@
     };
 
     const mapWardStatusKey = (wardNo) => {
+      if (wardAnalysisLens === 'overall') {
+        return overallLensCritical(wardNo) ? 'critical' : '';
+      }
       if (wardAnalysisLens === 'consumption') {
         return isPreviousConsumptionCriticalWard(wardNo) ? 'critical' : '';
       }
@@ -308,6 +331,11 @@
     const mapWardCategoryForNo = (wardNo) => {
       const pumping = pumpingWardSummaryForNo(wardNo);
       const critical = mapWardStatusKey(wardNo) === 'critical';
+      if (wardAnalysisLens === 'overall') {
+        return critical
+          ? 'Overall: Critical across all five lenses'
+          : 'Not common across all five lenses';
+      }
       if (wardAnalysisLens === 'consumption') {
         return critical ? 'Previous Consumption-Critical Ward' : 'Not critical under previous consumption method';
       }
@@ -336,6 +364,12 @@
 
     const mapWardReasonForNo = (wardNo) => {
       const pumping = pumpingWardSummaryForNo(wardNo);
+      if (wardAnalysisLens === 'overall') {
+        const flags = overallCriticalLensFlags(wardNo);
+        return overallLensCritical(wardNo)
+          ? 'Critical in groundwater decline, volumetric deficit, extraction, pumping stress, and specific capacity.'
+          : `Lens agreement: groundwater=${flags.groundwater ? 'yes' : 'no'}, volumetric deficit=${flags.volumetric_deficit ? 'yes' : 'no'}, extraction=${flags.extraction ? 'yes' : 'no'}, pumping stress=${flags.pumping_stress ? 'yes' : 'no'}, specific capacity=${flags.specific_capacity ? 'yes' : 'no'}.`;
+      }
       if (wardAnalysisLens === 'consumption') {
         return isPreviousConsumptionCriticalWard(wardNo)
           ? 'This ward belongs to the original 60 wards identified by the earlier consumption-based assessment.'
@@ -366,10 +400,11 @@
       return criticalForWardNo(wardNo)?.updateReason || 'Groundwater status uses the selected cleaned weekly trend method.';
     };
 
-    const mapLensCriticalColor = () => '#b91c1c';
+    const mapLensCriticalColor = () => '#7f1d1d';
 
     const mapLensCriticalLabel = () => ({
       groundwater: 'Critical: GW Decline',
+      overall: 'Critical: Overall Common',
       volumetric_deficit: 'Critical: High Volumetric Loss',
       extraction: 'Critical: High Extraction',
       consumption: 'Previous Consumption Critical',
@@ -757,30 +792,30 @@
       let style = neutralWardStyle();
       if (currentDataSource === 'kh' && key === 'critical') {
         style = {
-          color: '#111827',
-          weight: 3,
+          color: '#450a0a',
+          weight: 2.5,
           opacity: 1,
           fill: true,
           fillColor: mapLensCriticalColor(),
-          fillOpacity: 0.78
+          fillOpacity: 0.88
         };
       } else if (currentDataSource === 'kh' && wardAnalysisLens === 'groundwater' && isGroundwaterRiseWard(critical)) {
         style = {
-          color: '#0e5e66',
-          weight: 3,
+          color: '#022c22',
+          weight: 2.5,
           opacity: 1,
           fill: true,
-          fillColor: '#087f8c',
-          fillOpacity: 0.68
+          fillColor: '#065f46',
+          fillOpacity: 0.82
         };
       } else if (currentDataSource === 'kh' && key === 'stable') {
         style = {
-          color: '#8a4300',
-          weight: 2,
-          opacity: 0.9,
+          color: '#1e3a8a',
+          weight: 2.5,
+          opacity: 0.95,
           fill: true,
-          fillColor: '#d97706',
-          fillOpacity: 0.58
+          fillColor: '#1e40af',
+          fillOpacity: 0.78
         };
       }
       return isFocused ? focusedWardStyle(style) : style;
