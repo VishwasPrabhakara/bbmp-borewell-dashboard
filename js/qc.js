@@ -61,7 +61,7 @@
       )
     );
 
-    const groundwaterMethodOptions = [
+    var groundwaterMethodOptions = window.groundwaterMethodOptions || [
       { value: 'dashboard', label: 'Linear + Mann-Kendall with Review' },
       { value: 'linear', label: 'Linear only' },
       { value: 'theil', label: 'Theil-Sen only' },
@@ -72,7 +72,7 @@
       { value: 'all_three', label: 'Linear + Theil-Sen + Mann-Kendall' }
     ];
 
-    const wardAnalysisLensOptions = [
+    var wardAnalysisLensOptions = window.wardAnalysisLensOptions || [
       { value: 'groundwater', label: 'Groundwater Decline' },
       { value: 'overall', label: 'Overall Common Across 5 Lenses' },
       { value: 'volumetric_deficit', label: 'High Volumetric Deficit (ML)' },

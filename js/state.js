@@ -20,6 +20,27 @@ let currentDataSource = 'kh';
 let wardStatusFilter = '';
 let wardAnalysisLens = 'groundwater';
 let groundwaterMethodMode = 'dashboard';
+
+const groundwaterMethodOptions = [
+  { value: 'dashboard', label: 'Linear + Mann-Kendall with Review' },
+  { value: 'linear', label: 'Linear only' },
+  { value: 'theil', label: 'Theil-Sen only' },
+  { value: 'mann', label: 'Mann-Kendall only' },
+  { value: 'linear_theil', label: 'Linear + Theil-Sen' },
+  { value: 'linear_mann', label: 'Linear + Mann-Kendall' },
+  { value: 'theil_mann', label: 'Theil-Sen + Mann-Kendall' },
+  { value: 'all_three', label: 'Linear + Theil-Sen + Mann-Kendall' }
+];
+
+const wardAnalysisLensOptions = [
+  { value: 'groundwater', label: 'Groundwater Decline' },
+  { value: 'overall', label: 'Overall Common Across 5 Lenses' },
+  { value: 'volumetric_deficit', label: 'High Volumetric Deficit (ML)' },
+  { value: 'extraction', label: 'High Extraction' },
+  { value: 'pumping_stress', label: 'High Pumping Stress (Drawdown/m3)' },
+  { value: 'consumption', label: 'Previous Consumption Criticality' },
+  { value: 'specific_capacity', label: 'Low Specific Capacity' }
+];
 let groundwaterMethodDefaultInitialized = false;
 let latestWardStatusCounts = { critical: 0, rise: 0, stable: 0 };
 let sensors = [];
