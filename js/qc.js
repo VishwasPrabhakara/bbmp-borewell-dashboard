@@ -159,9 +159,10 @@
       const normalizedWardNo = normalizeWardNo(wardNo);
       const critical = criticalForWardNo(normalizedWardNo);
       const pumping = pumpingWardSummaryForNo(normalizedWardNo);
+      const vd = wardVolumetricDeficit(normalizedWardNo);
       return {
         groundwater: wardStatusKey(critical) === 'critical',
-        volumetric_deficit: wardVolumetricDeficit(normalizedWardNo).deficitMl >= 10.0,
+        volumetric_deficit: vd.deficitMl >= 5.0,
         extraction: Boolean(pumping?.criticalByExtraction),
         pumping_stress: Boolean(pumping?.highNormalizedDrawdown),
         specific_capacity: Boolean(pumping?.criticalBySpecificCapacity)
@@ -169,8 +170,12 @@
     };
 
     const overallLensCritical = (wardNo) => {
-      const flags = overallCriticalLensFlags(wardNo);
-      return Object.values(flags).every(Boolean);
+        const flags = overallCriticalLensFlags(wardNo);
+
+        const activeCount =
+            Object.values(flags).filter(Boolean).length;
+
+        return activeCount >= commonLensCount;
     };
 
     const isSelectedGroundwaterStable = (critical = {}) => {
@@ -336,10 +341,11 @@
       const pumping = pumpingWardSummaryForNo(wardNo);
       const critical = mapWardStatusKey(wardNo) === 'critical';
       if (wardAnalysisLens === 'overall') {
-        return critical
-          ? 'Overall: Critical across all five lenses'
-          : 'Not common across all five lenses';
-      }
+        const flags = overallCriticalLensFlags(wardNo);
+        const count = Object.values(flags).filter(Boolean).length;
+        return critical 
+          ? `Common in ${count} analytical lenses`
+          : `Present in only ${count} analytical lenses`;
       if (wardAnalysisLens === 'consumption') {
         return critical ? 'Previous Consumption-Critical Ward' : 'Not critical under previous consumption method';
       }
@@ -370,10 +376,33 @@
       const pumping = pumpingWardSummaryForNo(wardNo);
       if (wardAnalysisLens === 'overall') {
         const flags = overallCriticalLensFlags(wardNo);
+        const count = Object.values(flags).filter(Boolean).length;
+        const active = [];
+
+        if (flags.groundwater)
+            active.push("Groundwater");
+
+        if (flags.volumetric_deficit)
+            active.push("Volumetric Deficit");
+
+        if (flags.extraction)
+            active.push("Extraction");
+
+        if (flags.pumping_stress)
+            active.push("Pumping Stress");
+
+        if (flags.specific_capacity)
+            active.push("Specific Capacity");
+
         return overallLensCritical(wardNo)
-          ? 'Critical in groundwater decline, volumetric deficit, extraction, pumping stress, and specific capacity.'
-          : `Lens agreement: groundwater=${flags.groundwater ? 'yes' : 'no'}, volumetric deficit=${flags.volumetric_deficit ? 'yes' : 'no'}, extraction=${flags.extraction ? 'yes' : 'no'}, pumping stress=${flags.pumping_stress ? 'yes' : 'no'}, specific capacity=${flags.specific_capacity ? 'yes' : 'no'}.`;
-      }
+            ? `Common in ${count}/5 analytical lenses.
+
+        Included:
+        ${active.join(", ")}`
+            : `Present in ${count}/5 analytical lenses.
+
+        Included:
+        ${active.join(", ") || "None"}`;
       if (wardAnalysisLens === 'consumption') {
         return isPreviousConsumptionCriticalWard(wardNo)
           ? 'This ward belongs to the original 60 wards identified by the earlier consumption-based assessment.'
@@ -408,7 +437,7 @@
 
     const mapLensCriticalLabel = () => ({
       groundwater: 'Critical: GW Decline',
-      overall: 'Critical: Overall Common',
+      overall: `Common (≥ ${commonLensCount} lenses)`,
       volumetric_deficit: 'Critical: High Volumetric Loss',
       extraction: 'Critical: High Extraction',
       consumption: 'Previous Consumption Critical',

@@ -11,38 +11,152 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
     const drawShapeFile = async () => {
-      const response = await fetch('bbmpwards.zip');
-      if (!response.ok) throw new Error(`Could not load bbmpwards.zip: HTTP ${response.status}`);
-      const geojson = await shp(await response.arrayBuffer());
-      if (shapeLayer) map.removeLayer(shapeLayer);
-      wardFeatures = flattenGeoJsonFeatures(geojson);
-      wardLayers = [];
-      assignSensorsToWards();
-      shapeLayer = L.geoJSON({ type: 'FeatureCollection', features: wardFeatures }, {
-        style: wardStyle,
-        onEachFeature: (feature, layer) => {
-          wardLayers.push(layer);
-          layer.bindPopup(wardPopupHtml(feature));
-          layer.on('click', () => selectWard(feature));
-          layer.on('mouseover', () => {
+  const response = await fetch('bbmpwards.zip');
+
+  if (!response.ok) {
+    throw new Error(
+      `Could not load bbmpwards.zip: HTTP ${response.status}`
+    );
+  }
+
+  const geojson = await shp(await response.arrayBuffer());
+
+  if (shapeLayer) {
+    map.removeLayer(shapeLayer);
+  }
+
+  wardFeatures = flattenGeoJsonFeatures(geojson);
+  wardLayers = [];
+
+  assignSensorsToWards();
+
+  shapeLayer = L.geoJSON(
+    {
+      type: 'FeatureCollection',
+      features: wardFeatures
+    },
+    {
+      style: wardStyle,
+
+      onEachFeature: (feature, layer) => {
+        wardLayers.push(layer);
+
+        layer.bindPopup(
+          wardPopupHtml(feature),
+          {
+            closeButton: false,
+            autoClose: false,
+            closeOnClick: false,
+            offset: [16, -12],
+            maxWidth: 420
+          }
+        );
+
+        let hoverTimer = null;
+
+        /*
+         * Hover:
+         * Wait briefly before opening the ward summary popup.
+         */
+        layer.on('mouseover', (event) => {
+            if (hoverTimer) {
+                window.clearTimeout(hoverTimer);
+            }
+
             layer.bringToFront();
             bringSensorsToFront();
+
+            hoverTimer = window.setTimeout(() => {
+
+                const layerWardNo = normalizeWardNo(
+                    wardNumber(feature.properties || {})
+                );
+
+                if (focusedWardNo === layerWardNo) return;
+
+                layer.openPopup(event.latlng);
+
+            }, 150);
+        });
+
+        layer.on('mousemove', (event) => {
+
+            if (!layer.isPopupOpen()) return;
+
+            layer.getPopup().setLatLng(event.latlng);
+
+        });
+
+        /*
+         * Mouse leave:
+         * Cancel delayed popup and restore ward styling.
+         */
+        layer.on('mouseout', () => {
+          if (hoverTimer) {
+            window.clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+
+          layer.closePopup();
+
+          /*
+           * Restore this layer's correct current style.
+           * This is safer than rebuilding every ward popup
+           * on every mouseout.
+           */
+          layer.setStyle(wardStyle(feature));
+
+          const selectedLayer = wardLayers.find((item) => {
+            const itemWardNo = normalizeWardNo(
+              wardNumber(
+                item.feature?.properties || {}
+              )
+            );
+
+            return itemWardNo === focusedWardNo;
           });
-          layer.on('mouseout', () => {
-            refreshWardPopups();
-            const selectedLayer = wardLayers.find((item) => normalizeWardNo(wardNumber(item.feature?.properties || {})) === focusedWardNo);
-            if (selectedLayer) selectedLayer.bringToFront();
-            bringSensorsToFront();
-          });
-        }
-      }).addTo(map);
-      map.fitBounds(shapeLayer.getBounds().pad(0.08));
-      try {
-        await drawLakeFile();
-      } catch (lakeError) {
-        console.warn('[GIS] Optional Lakes_final.zip layer could not be rendered:', lakeError.message);
+
+          if (selectedLayer) {
+            selectedLayer.bringToFront();
+          }
+
+          bringSensorsToFront();
+        });
+
+        /*
+         * Click:
+         * Cancel hover popup, close it and open the ward sidebar.
+         */
+        layer.on('click', (event) => {
+          if (hoverTimer) {
+            window.clearTimeout(hoverTimer);
+            hoverTimer = null;
+          }
+
+          L.DomEvent.stopPropagation(event);
+
+          layer.closePopup();
+          map.closePopup();
+
+          selectWard(feature);
+        });
       }
-    };
+    }
+  ).addTo(map);
+
+  map.fitBounds(
+    shapeLayer.getBounds().pad(0.08)
+  );
+
+  try {
+    await drawLakeFile();
+  } catch (lakeError) {
+    console.warn(
+      '[GIS] Optional Lakes_final.zip layer could not be rendered:',
+      lakeError.message
+    );
+  }
+};
 
     const lakeName = (feature) => {
       const props = feature?.properties || {};

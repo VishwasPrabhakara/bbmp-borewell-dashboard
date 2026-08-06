@@ -152,42 +152,344 @@
     };
 
     const wardPopupHtml = (feature) => {
-      const props = feature.properties || {};
-      const count = props._sensorCount || 0;
-      const withData = props._sensorWithDataCount || 0;
-      const weekly = wardWeeklyForProps(props);
-      const selectedWardNo = wardNumber(props);
-      const criticalGw = criticalForWardNo(selectedWardNo);
-      const selectedMapCategory = mapWardCategoryForNo(selectedWardNo);
-      const selectedMapCritical = mapWardStatusKey(selectedWardNo) === 'critical';
-      const capacity = specificCapacityByWardNo.get(normalizeWardNo(selectedWardNo));
-      const showCapacity = hasValidSpecificCapacity(capacity);
-      const vd = wardVolumetricDeficit(selectedWardNo);
-      return `
-        <strong>Ward ${wardNumber(props)}: ${wardName(props)}</strong>
-        <div><strong>Map lens:</strong> ${htmlEscape(wardAnalysisLensLabel())}</div>
-        <div><strong>Lens category:</strong> ${htmlEscape(selectedMapCategory)}</div>
-        ${selectedMapCritical ? `<div><strong>Why marked:</strong> ${htmlEscape(mapWardReasonForNo(selectedWardNo))}</div>` : ''}
-        ${criticalGw ? `<div><strong>Groundwater update:</strong> ${criticalGw.groundwaterStatus || '-'} (${criticalGw.groundwaterDirection || '-'})</div>` : ''}
-        <div><strong>Sensors:</strong> ${formatNumber(count)}</div>
-        <div><strong>With data:</strong> ${formatNumber(withData)}</div>
-        <div><strong>GOOD sensors:</strong> ${formatNumber(weekly?.goodSensors || 0)}</div>
-        <div><strong>Avg drop/day:</strong> ${formatTrend(weekly?.avgDropPerDay, 'ft/day', 2)}</div>
-        ${vd.deficitMl > 0 ? `<div><strong>Volumetric Loss:</strong> ${formatNumber(vd.deficitMl, 2)} ML (~${formatNumber(vd.deficitTankers, 0)} tankers)</div>` : ''}
-        ${vd.category ? `<div><strong>Data Duration:</strong> ${htmlEscape(vd.category)}</div>` : ''}
+        const props = feature.properties || {};
+        const selectedWardNo = wardNumber(props);
+        const selectedWardName = wardName(props);
 
+        const sensorCount = Number(props._sensorCount || 0);
+        const withDataCount = Number(props._sensorWithDataCount || 0);
 
-        ${showCapacity ? `
-          <div><strong>Average specific capacity:</strong> ${formatNumber(scaledSpecificCapacity(capacity.averageTransmissivityScaled, capacity.averageSpecificCapacityM2s), 4)}</div>
-          <div><strong>Maximum specific capacity:</strong> ${formatNumber(scaledSpecificCapacity(capacity.maxTransmissivityScaled, capacity.maxSpecificCapacityM2s), 4)}</div>
-          <div><strong>Average inverse specific capacity:</strong> ${formatNumber(capacity.averageInverseSpecificCapacitySPerM2, 0)} s/m2</div>
-          <div><strong>Maximum inverse specific capacity:</strong> ${formatNumber(capacity.maxInverseSpecificCapacitySPerM2, 0)} s/m2</div>
-        ` : capacity ? `
-          <div><strong>Specific capacity:</strong> Not calculated for this ward</div>
-        ` : ''}
-        <div class="popup-hint">Click ward for full details.</div>
-      `;
-    };
+        const weekly = wardWeeklyForProps(props);
+        const criticalGw = criticalForWardNo(selectedWardNo);
+        const pumping = pumpingWardSummaryForNo(selectedWardNo);
+        const vd = wardVolumetricDeficit(selectedWardNo);
+
+        const selectedMapCategory = mapWardCategoryForNo(selectedWardNo);
+        const selectedMapCritical =
+          mapWardStatusKey(selectedWardNo) === 'critical';
+
+        const capacity =
+          specificCapacityByWardNo.get(
+            normalizeWardNo(selectedWardNo)
+          );
+
+        const showCapacity = hasValidSpecificCapacity(capacity);
+
+        const flags =
+          wardAnalysisLens === 'overall'
+            ? overallCriticalLensFlags(selectedWardNo)
+            : null;
+
+        const activeLensCount = flags
+          ? Object.values(flags).filter(Boolean).length
+          : 0;
+
+        const lensRows = flags
+          ? `
+            <div class="popup-section">
+              <div class="popup-section-title">
+                Active analytical lenses (${activeLensCount}/5)
+              </div>
+
+              <div class="popup-lens-row ${flags.groundwater ? 'active' : 'inactive'}">
+                <span>${flags.groundwater ? '✓' : '✕'}</span>
+                <span>Groundwater decline</span>
+              </div>
+
+              <div class="popup-lens-row ${flags.volumetric_deficit ? 'active' : 'inactive'}">
+                <span>${flags.volumetric_deficit ? '✓' : '✕'}</span>
+                <span>Volumetric deficit</span>
+              </div>
+
+              <div class="popup-lens-row ${flags.extraction ? 'active' : 'inactive'}">
+                <span>${flags.extraction ? '✓' : '✕'}</span>
+                <span>High extraction</span>
+              </div>
+
+              <div class="popup-lens-row ${flags.pumping_stress ? 'active' : 'inactive'}">
+                <span>${flags.pumping_stress ? '✓' : '✕'}</span>
+                <span>High pumping stress</span>
+              </div>
+
+              <div class="popup-lens-row ${flags.specific_capacity ? 'active' : 'inactive'}">
+                <span>${flags.specific_capacity ? '✓' : '✕'}</span>
+                <span>Low specific capacity</span>
+              </div>
+            </div>
+          `
+          : '';
+
+        return `
+          <div class="ward-popup">
+            <div class="ward-popup-title">
+              Ward ${htmlEscape(selectedWardNo)}:
+              ${htmlEscape(selectedWardName)}
+            </div>
+
+            <div class="popup-section">
+              <div class="popup-row">
+                <span>Map lens</span>
+                <strong>${htmlEscape(wardAnalysisLensLabel())}</strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Lens category</span>
+                <strong>${htmlEscape(selectedMapCategory)}</strong>
+              </div>
+
+              ${
+                selectedMapCritical
+                  ? `
+                    <div class="popup-reason">
+                      <strong>Why marked</strong>
+                      <div>
+                        ${htmlEscape(
+                          mapWardReasonForNo(selectedWardNo)
+                        )}
+                      </div>
+                    </div>
+                  `
+                  : ''
+              }
+            </div>
+
+            ${lensRows}
+
+            <div class="popup-section">
+              <div class="popup-section-title">
+                Groundwater
+              </div>
+
+              <div class="popup-row">
+                <span>Status</span>
+                <strong>
+                  ${
+                    criticalGw
+                      ? htmlEscape(
+                          criticalGw.groundwaterStatus || '-'
+                        )
+                      : '-'
+                  }
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Direction</span>
+                <strong>
+                  ${
+                    criticalGw
+                      ? htmlEscape(
+                          criticalGw.groundwaterDirection || '-'
+                        )
+                      : '-'
+                  }
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Linear slope</span>
+                <strong>
+                  ${formatTrend(
+                    criticalGw?.linearSlopeFtPerWeek,
+                    'ft/week',
+                    2
+                  )}
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Theil-Sen slope</span>
+                <strong>
+                  ${formatTrend(
+                    criticalGw?.senSlopeFtPerWeek,
+                    'ft/week',
+                    2
+                  )}
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Mann-Kendall p-value</span>
+                <strong>
+                  ${
+                    criticalGw?.mannKendallPValue == null
+                      ? '-'
+                      : formatNumber(
+                          criticalGw.mannKendallPValue,
+                          4
+                        )
+                  }
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Weekly points used</span>
+                <strong>
+                  ${formatNumber(
+                    criticalGw?.pointCount
+                    ?? criticalGw?.usableWeeklyValues
+                    ?? 0
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            <div class="popup-section">
+              <div class="popup-section-title">
+                Ward sensors
+              </div>
+
+              <div class="popup-row">
+                <span>Total sensors</span>
+                <strong>${formatNumber(sensorCount)}</strong>
+              </div>
+
+              <div class="popup-row">
+                <span>With data</span>
+                <strong>${formatNumber(withDataCount)}</strong>
+              </div>
+
+              <div class="popup-row">
+                <span>GOOD sensors</span>
+                <strong>
+                  ${formatNumber(weekly?.goodSensors || 0)}
+                </strong>
+              </div>
+
+              <div class="popup-row">
+                <span>Average drop/day</span>
+                <strong>
+                  ${formatTrend(
+                    weekly?.avgDropPerDay,
+                    'ft/day',
+                    2
+                  )}
+                </strong>
+              </div>
+            </div>
+
+            ${
+              vd.deficitMl > 0
+                ? `
+                  <div class="popup-section">
+                    <div class="popup-section-title">
+                      Volumetric deficit
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Estimated loss</span>
+                      <strong>
+                        ${formatNumber(vd.deficitMl, 2)} ML
+                      </strong>
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Equivalent tankers</span>
+                      <strong>
+                        ${formatNumber(
+                          vd.deficitTankers,
+                          0
+                        )}
+                      </strong>
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Observation period</span>
+                      <strong>
+                        ${htmlEscape(vd.category || '-')}
+                      </strong>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              pumping
+                ? `
+                  <div class="popup-section">
+                    <div class="popup-section-title">
+                      Pumping performance
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Estimated extraction</span>
+                      <strong>
+                        ${formatNumber(
+                          pumping.totalPumpedVolumeM3,
+                          0
+                        )} m³
+                      </strong>
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Median pumping stress</span>
+                      <strong>
+                        ${formatNumber(
+                          pumping.medianNormalizedDrawdownFtPerM3,
+                          2
+                        )} ft/m³
+                      </strong>
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Median specific capacity</span>
+                      <strong>
+                        ${formatNumber(
+                          pumping.medianSpecificCapacityScaled,
+                          4
+                        )} ×10⁻⁶ m²/s
+                      </strong>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
+
+            ${
+              showCapacity
+                ? `
+                  <div class="popup-section">
+                    <div class="popup-section-title">
+                      Specific capacity summary
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Average</span>
+                      <strong>
+                        ${formatNumber(
+                          scaledSpecificCapacity(
+                            capacity.averageTransmissivityScaled,
+                            capacity.averageSpecificCapacityM2s
+                          ),
+                          4
+                        )}
+                      </strong>
+                    </div>
+
+                    <div class="popup-row">
+                      <span>Maximum</span>
+                      <strong>
+                        ${formatNumber(
+                          scaledSpecificCapacity(
+                            capacity.maxTransmissivityScaled,
+                            capacity.maxSpecificCapacityM2s
+                          ),
+                          4
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
+
+            <div class="popup-hint">
+              Click the ward for complete details.
+            </div>
+          </div>
+        `;
+      };
 
     const renderMethodSummary = (payload) => {
       const sourceWards = Array.isArray(payload?.wards) ? payload.wards : [];

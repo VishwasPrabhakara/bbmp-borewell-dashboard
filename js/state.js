@@ -19,6 +19,7 @@ let sensorLayer = L.layerGroup().addTo(map);
 let currentDataSource = 'kh';
 let wardStatusFilter = '';
 let wardAnalysisLens = 'groundwater';
+let commonLensCount = 2;
 let groundwaterMethodMode = 'dashboard';
 
 const groundwaterMethodOptions = [
