@@ -76,7 +76,7 @@ window.addEventListener('unhandledrejection', (event) => {
 
                 layer.openPopup(event.latlng);
 
-            }, 150);
+            }, 300);
         });
 
         layer.on('mousemove', (event) => {
