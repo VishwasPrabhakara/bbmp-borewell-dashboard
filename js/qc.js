@@ -2172,3 +2172,171 @@
       if (number <= lowCut) return 'Low performance';
       return 'Medium performance';
     };
+
+    function verifyLensCounts() {
+    const report = {
+        groundwater: 0,
+        volumetric_deficit: 0,
+        extraction: 0,
+        pumping_stress: 0,
+        specific_capacity: 0,
+        common: {}
+    };
+
+    for (let n = 1; n <= 5; n++) {
+        report.common[n] = 0;
+    }
+
+    const wardDetails = [];
+
+    for (const wardNo of wardIndicatorsByNo.keys()) {
+
+        const flags = overallCriticalLensFlags(wardNo);
+
+        const activeCount = Object.values(flags).filter(Boolean).length;
+
+        if (flags.groundwater) report.groundwater++;
+        if (flags.volumetric_deficit) report.volumetric_deficit++;
+        if (flags.extraction) report.extraction++;
+        if (flags.pumping_stress) report.pumping_stress++;
+        if (flags.specific_capacity) report.specific_capacity++;
+
+        for (let n = 1; n <= 5; n++) {
+            if (activeCount >= n)
+                report.common[n]++;
+        }
+
+        wardDetails.push({
+            wardNo,
+            activeCount,
+            ...flags
+        });
+    }
+
+    console.log("========== LENS SUMMARY ==========");
+    console.table(report);
+
+    console.log("========== WARD DETAILS ==========");
+    console.table(wardDetails);
+
+    return { report, wardDetails };
+}
+
+function verifyDashboardCounts() {
+
+    let actualDisplayed = 0;
+
+    wardLayers.forEach(layer => {
+
+        const wardNo = wardNumber(layer.feature.properties);
+
+        if (mapWardStatusKey(wardNo) === "critical")
+            actualDisplayed++;
+
+    });
+
+    console.log("Dashboard Critical =", actualDisplayed);
+
+    return actualDisplayed;
+}
+
+function compareCurrentLens() {
+
+    let calculated = 0;
+
+    for (const wardNo of wardIndicatorsByNo.keys()) {
+
+        if (mapWardStatusKey(wardNo) === "critical")
+            calculated++;
+
+    }
+
+    const displayed = verifyDashboardCounts();
+
+    console.log("Calculated =", calculated);
+    console.log("Displayed  =", displayed);
+
+    if (calculated === displayed)
+        console.log("✅ MATCH");
+    else
+        console.error("❌ MISMATCH");
+}
+
+function verifyCommonSelector() {
+
+    for (let threshold = 1; threshold <= 5; threshold++) {
+
+        let count = 0;
+
+        const wards = [];
+
+        for (const wardNo of wardIndicatorsByNo.keys()) {
+
+            const flags = overallCriticalLensFlags(wardNo);
+
+            const active =
+                Object.values(flags).filter(Boolean).length;
+
+            if (active >= threshold) {
+
+                count++;
+
+                wards.push({
+                    wardNo,
+                    active,
+                    flags
+                });
+
+            }
+
+        }
+
+        console.group(`Common >= ${threshold}`);
+
+        console.log("Count =", count);
+
+        console.table(wards);
+
+        console.groupEnd();
+
+    }
+
+}
+
+function verifyCurrentDashboard() {
+
+    const mismatches = [];
+
+    wardLayers.forEach(layer => {
+
+        const wardNo = wardNumber(layer.feature.properties);
+
+        const calculated =
+            mapWardStatusKey(wardNo) === "critical";
+
+        const displayed =
+            layer.options.fillOpacity > 0;
+
+        if (calculated !== displayed) {
+
+            mismatches.push({
+
+                wardNo,
+
+                calculated,
+
+                displayed,
+
+                category: mapWardCategoryForNo(wardNo),
+
+                reason: mapWardReasonForNo(wardNo)
+
+            });
+
+        }
+
+    });
+
+    console.table(mismatches);
+
+}
