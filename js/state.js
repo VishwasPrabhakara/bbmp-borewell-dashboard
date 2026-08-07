@@ -35,7 +35,7 @@ const groundwaterMethodOptions = [
 
 const wardAnalysisLensOptions = [
   { value: 'groundwater', label: 'Groundwater Decline' },
-  { value: 'overall', label: 'Overall Common Across 5 Lenses' },
+  { value: 'overall', label: 'Common' },
   { value: 'volumetric_deficit', label: 'High Volumetric Deficit (ML)' },
   { value: 'extraction', label: 'High Extraction' },
   { value: 'pumping_stress', label: 'High Pumping Stress (Drawdown/m3)' },

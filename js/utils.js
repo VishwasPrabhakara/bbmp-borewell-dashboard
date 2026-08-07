@@ -565,7 +565,7 @@
       const lensNote = wardAnalysisLens === 'groundwater'
         ? `${selectedMethodLabel} using cleaned weekly ${wardLevelStatistic} levels.`
         : wardAnalysisLens === 'overall'
-          ? 'Overall lens marks only wards that are critical in groundwater decline, volumetric deficit, extraction, pumping stress, and specific capacity.'
+          ? `Highlights wards active in at least ${commonLensCount} of the 5 analytical lenses.`
         : wardAnalysisLens === 'volumetric_deficit'
           ? 'High volumetric deficit highlights wards losing >= 10 Million Liters (ML) of groundwater storage based on Specific Yield (Sy=0.02).'
         : wardAnalysisLens === 'consumption'
@@ -600,6 +600,22 @@
               `).join('')}
             </select>
           </label>
+          ${wardAnalysisLens === 'overall' ? `
+            <label class="method-field">
+              <span>Common threshold</span>
+
+              <select data-common-lens-count-select>
+                ${[1, 2, 3, 4, 5].map((count) => `
+                  <option
+                    value="${count}"
+                    ${count === commonLensCount ? 'selected' : ''}
+                  >
+                    ${count} / 5
+                  </option>
+                `).join('')}
+              </select>
+            </label>
+          ` : ''}
           ${wardAnalysisLens === 'groundwater' ? `
             <label class="method-field method-field-wide">
               <span>Groundwater method</span>
@@ -621,10 +637,23 @@
         <div class="method-note">${htmlEscape(lensNote)} Select the count to filter the map.</div>
       `;
       els.methodSummary.querySelector('[data-analysis-lens-select]')?.addEventListener('change', (event) => {
-        wardAnalysisLens = event.target.value || 'groundwater';
-        wardStatusFilter = '';
-        refreshGroundwaterClassificationViews();
-      });
+          wardAnalysisLens = event.target.value || 'groundwater';
+          wardStatusFilter = '';
+          refreshGroundwaterClassificationViews();
+        });
+        els.methodSummary
+    .querySelector('[data-common-lens-count-select]')
+    ?.addEventListener('change', (event) => {
+      const nextCount = Number(event.target.value);
+
+      commonLensCount = Number.isFinite(nextCount)
+        ? Math.min(5, Math.max(1, nextCount))
+        : 2;
+
+      wardStatusFilter = '';
+
+      refreshGroundwaterClassificationViews();
+    });
       els.methodSummary.querySelector('[data-groundwater-method-select]')?.addEventListener('change', (event) => {
           groundwaterMethodMode = event.target.value || 'dashboard';
           refreshGroundwaterClassificationViews();
