@@ -10,6 +10,18 @@ window.addEventListener('unhandledrejection', (event) => {
   }
 });
 
+const hoverPopup = L.popup({
+    closeButton: false,
+    autoClose: false,
+    closeOnClick: false,
+    className: 'ward-hover-popup',
+    offset: [16, -12],
+    maxWidth: 420
+});
+
+let hoverTimer = null;
+let hoveredLayer = null;
+
     const drawShapeFile = async () => {
   const response = await fetch('bbmpwards.zip');
 
@@ -41,49 +53,44 @@ window.addEventListener('unhandledrejection', (event) => {
       onEachFeature: (feature, layer) => {
         wardLayers.push(layer);
 
-        layer.bindPopup(
-          wardPopupHtml(feature),
-          {
-            closeButton: false,
-            autoClose: false,
-            closeOnClick: false,
-            offset: [16, -12],
-            maxWidth: 420
-          }
-        );
-
-        let hoverTimer = null;
+        
 
         /*
          * Hover:
          * Wait briefly before opening the ward summary popup.
          */
-        layer.on('mouseover', (event) => {
-            if (hoverTimer) {
-                window.clearTimeout(hoverTimer);
-            }
+        layer.on('mouseover', (e) => {
 
-            layer.bringToFront();
-            bringSensorsToFront();
+          clearTimeout(hoverTimer);
 
-            hoverTimer = window.setTimeout(() => {
+          hoverTimer = setTimeout(() => {
 
-                const layerWardNo = normalizeWardNo(
-                    wardNumber(feature.properties || {})
-                );
+              const layerWardNo = normalizeWardNo(
+                  wardNumber(feature.properties || {})
+              );
 
-                if (focusedWardNo === layerWardNo) return;
+              if (focusedWardNo === layerWardNo) return;
 
-                layer.openPopup(event.latlng);
+              hoveredLayer = layer;
 
-            }, 300);
-        });
+              hoverPopup
+                  .setLatLng(e.latlng)
+                  .setContent(wardPopupHtml(feature))
+                  .openOn(map);
 
-        layer.on('mousemove', (event) => {
+              layer.bringToFront();
+              bringSensorsToFront();
 
-            if (!layer.isPopupOpen()) return;
+          }, 300);
 
-            layer.getPopup().setLatLng(event.latlng);
+      });
+
+       layer.on('mousemove', (e) => {
+
+            if (hoveredLayer !== layer)
+                return;
+
+            hoverPopup.setLatLng(e.latlng);
 
         });
 
@@ -92,37 +99,31 @@ window.addEventListener('unhandledrejection', (event) => {
          * Cancel delayed popup and restore ward styling.
          */
         layer.on('mouseout', () => {
-          if (hoverTimer) {
-            window.clearTimeout(hoverTimer);
-            hoverTimer = null;
+
+          clearTimeout(hoverTimer);
+
+          if (hoveredLayer === layer) {
+
+              map.closePopup(hoverPopup);
+
+              hoveredLayer = null;
+
           }
 
-          layer.closePopup();
-
-          /*
-           * Restore this layer's correct current style.
-           * This is safer than rebuilding every ward popup
-           * on every mouseout.
-           */
           layer.setStyle(wardStyle(feature));
 
-          const selectedLayer = wardLayers.find((item) => {
-            const itemWardNo = normalizeWardNo(
-              wardNumber(
-                item.feature?.properties || {}
-              )
-            );
+          const selectedLayer = wardLayers.find(item =>
+              normalizeWardNo(
+                  wardNumber(item.feature?.properties || {})
+              ) === focusedWardNo
+          );
 
-            return itemWardNo === focusedWardNo;
-          });
-
-          if (selectedLayer) {
-            selectedLayer.bringToFront();
-          }
+          if (selectedLayer)
+              selectedLayer.bringToFront();
 
           bringSensorsToFront();
-        });
 
+      });
         /*
          * Click:
          * Cancel hover popup, close it and open the ward sidebar.
@@ -135,9 +136,11 @@ window.addEventListener('unhandledrejection', (event) => {
 
           L.DomEvent.stopPropagation(event);
 
-          layer.closePopup();
-          map.closePopup();
+          clearTimeout(hoverTimer);
 
+          hoveredLayer = null;
+
+          map.closePopup(hoverPopup);
           selectWard(feature);
         });
       }
@@ -583,7 +586,7 @@ window.addEventListener('unhandledrejection', (event) => {
         }
         const shapeLayer = wardLayers.find((layer) => layer.feature === feature);
         if (shapeLayer) {
-          shapeLayer.bindPopup(wardPopupHtml(feature));
+          
           shapeLayer.bringToFront();
         }
         const wardData = payload.ward || wardWeeklyByNo.get(selectedWardNo) || null;
