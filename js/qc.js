@@ -2336,9 +2336,29 @@ function runDashboardAudit() {
 
     const wardNumbers = new Set();
 
-    wardIndicatorsByNo.forEach((_, k) => wardNumbers.add(k));
-    criticalGroundwaterByNo.forEach((_, k) => wardNumbers.add(k));
-    pumpingPerformanceWardSummaryByNo.forEach((_, k) => wardNumbers.add(k));
+    /* Every ward actually drawn on the dashboard */
+    wardFeatures.forEach((feature) => {
+        const wn = normalizeWardNo(
+            wardNumber(feature?.properties || {})
+        );
+
+        if (wn) {
+            wardNumbers.add(wn);
+        }
+    });
+
+    /* Also include any API/data wards not present in the shapefile */
+    wardIndicatorsByNo.forEach((_, k) =>
+        wardNumbers.add(normalizeWardNo(k))
+    );
+
+    criticalGroundwaterByNo.forEach((_, k) =>
+        wardNumbers.add(normalizeWardNo(k))
+    );
+
+    pumpingPerformanceWardSummaryByNo.forEach((_, k) =>
+        wardNumbers.add(normalizeWardNo(k))
+    );
 
     for (const wardNo of wardNumbers) {
 
@@ -2359,22 +2379,24 @@ function runDashboardAudit() {
         if (active >= 4) summary.common4++;
         if (active >= 5) summary.common5++;
 
-        const feature =
-            wardFeatures.find(f =>
-                normalizeWardNo(wardNumber(f.properties)) === normalizeWardNo(wardNo)
-            );
+        const feature = wardFeatures.find(
+            f => normalizeWardNo(wardNumber(f?.properties || {})) === wardNo
+        );
 
-        const wardName =
-            feature ?
-            wardName(feature.properties) :
-            criticalGroundwaterByNo.get(normalizeWardNo(wardNo))?.wardName ??
-            "";
+        const wardNameText = feature
+            ? wardName(feature.properties)
+            : (
+                criticalGroundwaterByNo.get(wardNo)?.wardName ||
+                wardIndicatorsByNo.get(wardNo)?.wardName ||
+                pumpingPerformanceWardSummaryByNo.get(wardNo)?.wardName ||
+                ""
+              );
 
         wardTable.push({
 
             Ward_No: wardNo,
 
-            Ward_Name: wardName,
+            Ward_Name: wardNameText,
 
             Groundwater: flags.groundwater,
 
@@ -2400,12 +2422,16 @@ function runDashboardAudit() {
 
     wardLayers.forEach(layer => {
 
-        const wn = wardNumber(layer.feature.properties);
+          if (!layer.feature || !layer.feature.properties) return;
 
-        if (mapWardStatusKey(wn) === "critical")
-            displayedCritical++;
+          const wn = normalizeWardNo(
+              wardNumber(layer.feature.properties)
+          );
 
-    });
+          if (mapWardStatusKey(wn) === "critical")
+              displayedCritical++;
+
+      });
 
     console.log("");
     console.log("================== SUMMARY ==================");
@@ -2454,16 +2480,15 @@ function runDashboardAudit() {
         })
     );
 
-    const mismatch = wardTable.filter(r=>{
+    const mismatch =
+      wardAnalysisLens === 'overall'
+          ? wardTable.filter((r) => {
+              const expected =
+                  r.Total_Lenses >= commonLensCount;
 
-        const expected =
-            wardAnalysisLens==="overall"
-                ? r.Total_Lenses>=commonLensCount
-                : r.Dashboard_Critical;
-
-        return expected!==r.Dashboard_Critical;
-
-    });
+              return expected !== r.Dashboard_Critical;
+          })
+          : [];
 
     console.log("");
     console.log("================== MISMATCHS ==================");
@@ -2512,3 +2537,9 @@ function runDashboardAudit() {
     };
 
 }
+
+window.runDashboardAudit = runDashboardAudit;
+window.verifyLensCounts = verifyLensCounts;
+window.verifyDashboardCounts = verifyDashboardCounts;
+window.compareCurrentLens = compareCurrentLens;
+window.verifyCommonSelector = verifyCommonSelector;
