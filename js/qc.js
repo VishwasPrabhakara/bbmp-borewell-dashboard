@@ -2303,40 +2303,212 @@ function verifyCommonSelector() {
 
 }
 
-function verifyCurrentDashboard() {
+/* ==========================================================================
+   DASHBOARD AUDIT TOOL
+   Run from browser console:
+   runDashboardAudit();
+   ========================================================================== */
 
-    const mismatches = [];
+function runDashboardAudit() {
+
+    console.clear();
+
+    console.log("==========================================================");
+    console.log("           BBMP BOREWELL DASHBOARD AUDIT");
+    console.log("==========================================================");
+
+    const summary = {
+        groundwater: 0,
+        volumetric_deficit: 0,
+        extraction: 0,
+        pumping_stress: 0,
+        specific_capacity: 0,
+        common1: 0,
+        common2: 0,
+        common3: 0,
+        common4: 0,
+        common5: 0
+    };
+
+    const wardTable = [];
+
+    let displayedCritical = 0;
+
+    const wardNumbers = new Set();
+
+    wardIndicatorsByNo.forEach((_, k) => wardNumbers.add(k));
+    criticalGroundwaterByNo.forEach((_, k) => wardNumbers.add(k));
+    pumpingPerformanceWardSummaryByNo.forEach((_, k) => wardNumbers.add(k));
+
+    for (const wardNo of wardNumbers) {
+
+        const flags = overallCriticalLensFlags(wardNo);
+
+        const active =
+            Object.values(flags).filter(Boolean).length;
+
+        if (flags.groundwater) summary.groundwater++;
+        if (flags.volumetric_deficit) summary.volumetric_deficit++;
+        if (flags.extraction) summary.extraction++;
+        if (flags.pumping_stress) summary.pumping_stress++;
+        if (flags.specific_capacity) summary.specific_capacity++;
+
+        if (active >= 1) summary.common1++;
+        if (active >= 2) summary.common2++;
+        if (active >= 3) summary.common3++;
+        if (active >= 4) summary.common4++;
+        if (active >= 5) summary.common5++;
+
+        const feature =
+            wardFeatures.find(f =>
+                normalizeWardNo(wardNumber(f.properties)) === normalizeWardNo(wardNo)
+            );
+
+        const wardName =
+            feature ?
+            wardName(feature.properties) :
+            criticalGroundwaterByNo.get(normalizeWardNo(wardNo))?.wardName ??
+            "";
+
+        wardTable.push({
+
+            Ward_No: wardNo,
+
+            Ward_Name: wardName,
+
+            Groundwater: flags.groundwater,
+
+            Volumetric_Deficit: flags.volumetric_deficit,
+
+            Extraction: flags.extraction,
+
+            Pumping_Stress: flags.pumping_stress,
+
+            Specific_Capacity: flags.specific_capacity,
+
+            Total_Lenses: active,
+
+            Dashboard_Critical:
+                mapWardStatusKey(wardNo) === "critical",
+
+            Dashboard_Category:
+                mapWardCategoryForNo(wardNo)
+
+        });
+
+    }
 
     wardLayers.forEach(layer => {
 
-        const wardNo = wardNumber(layer.feature.properties);
+        const wn = wardNumber(layer.feature.properties);
 
-        const calculated =
-            mapWardStatusKey(wardNo) === "critical";
-
-        const displayed =
-            layer.options.fillOpacity > 0;
-
-        if (calculated !== displayed) {
-
-            mismatches.push({
-
-                wardNo,
-
-                calculated,
-
-                displayed,
-
-                category: mapWardCategoryForNo(wardNo),
-
-                reason: mapWardReasonForNo(wardNo)
-
-            });
-
-        }
+        if (mapWardStatusKey(wn) === "critical")
+            displayedCritical++;
 
     });
 
-    console.table(mismatches);
+    console.log("");
+    console.log("================== SUMMARY ==================");
+
+    console.table([{
+
+        Groundwater: summary.groundwater,
+
+        Volumetric_Deficit: summary.volumetric_deficit,
+
+        Extraction: summary.extraction,
+
+        Pumping_Stress: summary.pumping_stress,
+
+        Specific_Capacity: summary.specific_capacity,
+
+        "Common >=1": summary.common1,
+
+        "Common >=2": summary.common2,
+
+        "Common >=3": summary.common3,
+
+        "Common >=4": summary.common4,
+
+        "Common >=5": summary.common5,
+
+        Dashboard_Current:
+            wardTable.filter(r => r.Dashboard_Critical).length,
+
+        Drawn_On_Map:
+            displayedCritical
+
+    }]);
+
+    console.log("");
+    console.log("================== WARD TABLE ==================");
+
+    console.table(
+        wardTable.sort((a,b)=>{
+
+            if(b.Total_Lenses!==a.Total_Lenses)
+                return b.Total_Lenses-a.Total_Lenses;
+
+            return Number(a.Ward_No)-Number(b.Ward_No);
+
+        })
+    );
+
+    const mismatch = wardTable.filter(r=>{
+
+        const expected =
+            wardAnalysisLens==="overall"
+                ? r.Total_Lenses>=commonLensCount
+                : r.Dashboard_Critical;
+
+        return expected!==r.Dashboard_Critical;
+
+    });
+
+    console.log("");
+    console.log("================== MISMATCHS ==================");
+
+    if(mismatch.length===0){
+
+        console.log("✅ No mismatches found.");
+
+    }
+    else{
+
+        console.warn("❌ Mismatches Found");
+
+        console.table(mismatch);
+
+    }
+
+    console.log("");
+    console.log("================== COMMON GROUPS ==================");
+
+    for(let i=5;i>=1;i--){
+
+        const rows=wardTable.filter(r=>r.Total_Lenses>=i);
+
+        console.group(`Common >= ${i} (${rows.length})`);
+
+        console.table(rows);
+
+        console.groupEnd();
+
+    }
+
+    console.log("");
+    console.log("==========================================================");
+    console.log("Audit Complete");
+    console.log("==========================================================");
+
+    return {
+
+        summary,
+
+        wards:wardTable,
+
+        mismatch
+
+    };
 
 }
